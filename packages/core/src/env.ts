@@ -23,11 +23,18 @@ const rawEnvSchema = z
     DATABASE_URL: z.string().min(1).default("file:./var/dev.db"),
     REDIS_URL: optionalString,
     QUEUE_DRIVER: z.enum(["memory", "bullmq"]).optional(),
+    QUEUE_PREFIX: z
+      .string()
+      .trim()
+      .min(1)
+      .regex(/^[a-zA-Z0-9_-]+$/)
+      .default("checkoutwatch"),
     SHOPIFY_API_KEY: optionalString,
     SHOPIFY_API_SECRET: optionalString,
     SHOPIFY_APP_URL: z.string().url().default("http://localhost:3000"),
     SHOPIFY_SCOPES: z.string().min(1).default("read_products,read_themes"),
     SHOPIFY_AUTH: z.enum(["mock", "real"]).optional(),
+    SHOPIFY_MOCK_WEBHOOK_SECRET: optionalString,
     ANTHROPIC_API_KEY: optionalString,
     LLM_MODEL: z.string().min(1).default("claude-opus-4-8"),
     DIAGNOSIS_PROVIDER: z.enum(["heuristic", "anthropic"]).optional(),
@@ -47,7 +54,7 @@ const rawEnvSchema = z
     PRODUCT_UNAVAILABLE_AUTOPAUSE: z.coerce.number().int().min(2).default(6),
     INLINE_WORKER: booleanString.default("1"),
     FIXTURE_STOREFRONT_URL: z.string().url().default("http://localhost:4600"),
-    CONTROL_PROBE_URL: z.string().url().default("http://localhost:4602/health"),
+    CONTROL_PROBE_URL: z.string().url().optional(),
     KNOWN_PAYMENT_ORIGINS: z
       .string()
       .default("https://checkout.shopifycs.com,https://js.stripe.com,http://localhost:4601"),
@@ -94,6 +101,22 @@ const rawEnvSchema = z
         message: "real auth requires SHOPIFY_API_KEY and SHOPIFY_API_SECRET",
       });
     }
+
+    if (value.NODE_ENV === "production") {
+      if (!value.CONTROL_PROBE_URL) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["CONTROL_PROBE_URL"],
+          message: "is required in production",
+        });
+      } else if (isLoopbackHostname(new URL(value.CONTROL_PROBE_URL).hostname)) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["CONTROL_PROBE_URL"],
+          message: "must not point at localhost or a loopback address in production",
+        });
+      }
+    }
   });
 
 export type QueueDriver = "memory" | "bullmq";
@@ -106,11 +129,13 @@ export interface AppConfig {
   databaseUrl: string;
   redisUrl?: string;
   queueDriver: QueueDriver;
+  queuePrefix: string;
   shopifyApiKey?: string;
   shopifyApiSecret?: string;
   shopifyAppUrl: string;
   shopifyScopes: readonly string[];
   shopifyAuth: ShopifyAuth;
+  shopifyMockWebhookSecret?: string;
   anthropicApiKey?: string;
   llmModel: string;
   diagnosisProvider: DiagnosisProvider;
@@ -150,6 +175,7 @@ export function parseEnv(input: NodeJS.ProcessEnv | Record<string, unknown>): Ap
     databaseUrl: raw.DATABASE_URL,
     ...(raw.REDIS_URL ? { redisUrl: raw.REDIS_URL } : {}),
     queueDriver,
+    queuePrefix: raw.QUEUE_PREFIX,
     ...(raw.SHOPIFY_API_KEY ? { shopifyApiKey: raw.SHOPIFY_API_KEY } : {}),
     ...(raw.SHOPIFY_API_SECRET ? { shopifyApiSecret: raw.SHOPIFY_API_SECRET } : {}),
     shopifyAppUrl: raw.SHOPIFY_APP_URL,
@@ -157,6 +183,9 @@ export function parseEnv(input: NodeJS.ProcessEnv | Record<string, unknown>): Ap
       .map((scope) => scope.trim())
       .filter(Boolean),
     shopifyAuth,
+    ...(raw.SHOPIFY_MOCK_WEBHOOK_SECRET
+      ? { shopifyMockWebhookSecret: raw.SHOPIFY_MOCK_WEBHOOK_SECRET }
+      : {}),
     ...(raw.ANTHROPIC_API_KEY ? { anthropicApiKey: raw.ANTHROPIC_API_KEY } : {}),
     llmModel: raw.LLM_MODEL,
     diagnosisProvider,
@@ -176,11 +205,25 @@ export function parseEnv(input: NodeJS.ProcessEnv | Record<string, unknown>): Ap
     productUnavailableAutopause: raw.PRODUCT_UNAVAILABLE_AUTOPAUSE,
     inlineWorker: raw.INLINE_WORKER,
     fixtureStorefrontUrl: raw.FIXTURE_STOREFRONT_URL,
-    controlProbeUrl: raw.CONTROL_PROBE_URL,
+    controlProbeUrl: raw.CONTROL_PROBE_URL ?? "http://localhost:4602/health",
     knownPaymentOrigins: raw.KNOWN_PAYMENT_ORIGINS.split(",")
       .map((origin) => origin.trim())
       .filter(Boolean),
   };
+}
+
+function isLoopbackHostname(hostname: string): boolean {
+  const normalized = hostname
+    .toLowerCase()
+    .replace(/^\[|\]$/g, "")
+    .replace(/\.$/, "");
+  return (
+    normalized === "localhost" ||
+    normalized === "::1" ||
+    normalized === "0.0.0.0" ||
+    normalized.startsWith("127.") ||
+    normalized.startsWith("::ffff:127.")
+  );
 }
 
 let cachedConfig: AppConfig | undefined;

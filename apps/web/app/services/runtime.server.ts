@@ -14,8 +14,12 @@ import {
 } from "@checkoutwatch/db";
 import { CheckoutRunner, LocalArtifactStore } from "@checkoutwatch/engine";
 import { createJobQueue, type JobQueue, type ProcessorHandle } from "@checkoutwatch/queue";
-import { MockShopifyAdmin } from "@checkoutwatch/shopify";
-import { registerJobs, MonitorScheduler, startScheduler } from "@checkoutwatch/worker";
+import {
+  createShopifyAdminFactory,
+  registerJobs,
+  MonitorScheduler,
+  startScheduler,
+} from "@checkoutwatch/worker";
 
 export interface WebRuntime {
   config: AppConfig;
@@ -55,7 +59,7 @@ async function createRuntime(): Promise<WebRuntime> {
       diagnosis: diagnosisOptions(config),
       changePolling: {
         repository: new PrismaStoreChangeRepository(client),
-        shopify: new MockShopifyAdmin(config.fixtureStorefrontUrl),
+        shopify: createShopifyAdminFactory(config),
       },
     });
     const scheduler = startScheduler(new MonitorScheduler(repository, queue));

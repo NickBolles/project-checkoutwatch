@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { afterEach, describe, expect, it } from "vitest";
-import { BullMQDriver, MemoryDriver, type JobQueue } from "../src/index.js";
+import { BullMQDriver, DEFAULT_QUEUE_PREFIX, MemoryDriver, type JobQueue } from "../src/index.js";
 
 function queueContract(label: string, create: () => JobQueue, enabled = true): void {
   const suite = enabled ? describe : describe.skip;
@@ -11,7 +11,9 @@ function queueContract(label: string, create: () => JobQueue, enabled = true): v
     it("processes FIFO", async () => {
       queue = create();
       const seen: number[] = [];
-      await queue.process<number>("fifo", async (value) => { seen.push(value); });
+      await queue.process<number>("fifo", async (value) => {
+        seen.push(value);
+      });
       await queue.add("fifo", 1);
       await queue.add("fifo", 2);
       await queue.add("fifo", 3);
@@ -23,7 +25,9 @@ function queueContract(label: string, create: () => JobQueue, enabled = true): v
       queue = create();
       const start = Date.now();
       let elapsed = 0;
-      await queue.process("delay", async () => { elapsed = Date.now() - start; });
+      await queue.process("delay", async () => {
+        elapsed = Date.now() - start;
+      });
       await queue.add("delay", {}, { delayMs: 40 });
       await eventually(() => elapsed > 0);
       expect(elapsed).toBeGreaterThanOrEqual(25);
@@ -49,13 +53,17 @@ function queueContract(label: string, create: () => JobQueue, enabled = true): v
       let active = 0;
       let maxActive = 0;
       let completed = 0;
-      await queue.process("concurrency", async () => {
-        active += 1;
-        maxActive = Math.max(maxActive, active);
-        await new Promise((resolve) => setTimeout(resolve, 30));
-        active -= 1;
-        completed += 1;
-      }, { concurrency: 2 });
+      await queue.process(
+        "concurrency",
+        async () => {
+          active += 1;
+          maxActive = Math.max(maxActive, active);
+          await new Promise((resolve) => setTimeout(resolve, 30));
+          active -= 1;
+          completed += 1;
+        },
+        { concurrency: 2 },
+      );
       await Promise.all([1, 2, 3, 4].map((value) => queue.add("concurrency", value)));
       await eventually(() => completed === 4);
       expect(maxActive).toBe(2);
@@ -64,7 +72,9 @@ function queueContract(label: string, create: () => JobQueue, enabled = true): v
     it("deduplicates duplicate delivery by job id", async () => {
       queue = create();
       let effects = 0;
-      await queue.process("dedupe", async () => { effects += 1; });
+      await queue.process("dedupe", async () => {
+        effects += 1;
+      });
       const first = await queue.add("dedupe", { monitorId: "m1" }, { jobId: "m1:100" });
       const second = await queue.add("dedupe", { monitorId: "m1" }, { jobId: "m1:100" });
       expect(second).toBe(first);
@@ -76,7 +86,54 @@ function queueContract(label: string, create: () => JobQueue, enabled = true): v
 }
 
 queueContract("memory", () => new MemoryDriver());
-queueContract("BullMQ", () => new BullMQDriver(process.env.REDIS_URL!, `contract-${randomUUID()}`), Boolean(process.env.REDIS_URL));
+queueContract(
+  "BullMQ",
+  () => new BullMQDriver(process.env.REDIS_URL!, `contract-${randomUUID()}`),
+  Boolean(process.env.REDIS_URL),
+);
+
+describe("BullMQ shared keyspace", () => {
+  it("uses a stable, process-independent default prefix", () => {
+    expect(DEFAULT_QUEUE_PREFIX).toBe("checkoutwatch");
+    expect(DEFAULT_QUEUE_PREFIX).not.toContain(String(process.pid));
+  });
+
+  const redisTest = process.env.REDIS_URL ? it : it.skip;
+
+  redisTest("delivers web-enqueued jobs to a worker using the default prefix", async () => {
+    const web = new BullMQDriver(process.env.REDIS_URL!);
+    const worker = new BullMQDriver(process.env.REDIS_URL!);
+    const queueName = `cross-process-${randomUUID()}`;
+    let received: unknown;
+    const processor = await worker.process(queueName, async (payload) => {
+      received = payload;
+    });
+    try {
+      await web.add(queueName, { source: "web" });
+      await eventually(() => received !== undefined);
+      expect(received).toEqual({ source: "web" });
+    } finally {
+      await processor.close();
+      await Promise.all([web.close(), worker.close()]);
+    }
+  });
+
+  redisTest("cancels worker-visible jobs from a separate web instance", async () => {
+    const queueName = `cross-cancel-${randomUUID()}`;
+    const worker = new BullMQDriver(process.env.REDIS_URL!);
+    const web = new BullMQDriver(process.env.REDIS_URL!, undefined, [queueName]);
+    try {
+      await worker.add(queueName, { monitorId: "cancel-me" }, { delayMs: 60_000 });
+      expect(
+        await web.cancelWhere(
+          (_name, payload) => (payload as { monitorId?: string }).monitorId === "cancel-me",
+        ),
+      ).toBe(1);
+    } finally {
+      await Promise.all([web.close(), worker.close()]);
+    }
+  });
+});
 
 async function eventually(predicate: () => boolean, timeoutMs = 3000): Promise<void> {
   const deadline = Date.now() + timeoutMs;

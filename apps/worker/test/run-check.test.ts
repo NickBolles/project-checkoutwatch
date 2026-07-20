@@ -1,5 +1,9 @@
-import { describe, expect, it, vi } from "vitest";
+import { copyFile, mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CheckRunResult } from "@checkoutwatch/engine";
+import { createPrismaClient, PrismaMonitorRunRepository } from "@checkoutwatch/db";
 import {
   createRunCheckHandler,
   type RunCheckRepository,
@@ -11,6 +15,7 @@ class FakeRunRepository implements RunCheckRepository {
   persisted = 0;
   cleared = 0;
   completedKeys = new Set<string>();
+  triggers: string[] = [];
   monitor: RunnableMonitor = {
     id: "m1",
     productHandle: "test-product",
@@ -24,9 +29,10 @@ class FakeRunRepository implements RunCheckRepository {
     this.runningAt = now;
     return Promise.resolve(this.monitor);
   }
-  persistRun(_id: string, key: string) {
+  persistRun(_id: string, key: string, trigger: "schedule" | "manual" | "recheck") {
     this.persisted += 1;
     this.completedKeys.add(key);
+    this.triggers.push(trigger);
     return Promise.resolve();
   }
   clearRunLock(_id: string, acquiredAt: Date) {
@@ -48,6 +54,11 @@ const passed: CheckRunResult = {
   failedRequests: [],
   robotsTxt: { status: 200 },
 };
+
+const clients: Array<ReturnType<typeof createPrismaClient>> = [];
+afterEach(async () => {
+  await Promise.all(clients.splice(0).map((client) => client.$disconnect()));
+});
 
 describe("run-check in-flight and idempotency guard", () => {
   it("skips an active monitor without invoking the engine", async () => {
@@ -74,4 +85,46 @@ describe("run-check in-flight and idempotency guard", () => {
     expect(repository.persisted).toBe(1);
     expect(repository.cleared).toBe(1);
   });
+
+  it("persists run provenance separately from the unique queue job key", async () => {
+    const client = await isolatedClient();
+    const shop = await client.shop.create({
+      data: {
+        shopDomain: `provenance-${Date.now()}.myshopify.com`,
+        storefrontUrl: "https://merchant.example.com",
+      },
+    });
+    const monitor = await client.monitor.create({
+      data: {
+        shopId: shop.id,
+        name: "Checkout",
+        productHandle: "test-product",
+        productTitle: "Test product",
+      },
+    });
+    const repository = new PrismaMonitorRunRepository(client);
+
+    await repository.persistRun(monitor.id, "job:web-123", "manual", passed);
+    await repository.persistRun(monitor.id, "job:web-123", "recheck", {
+      ...passed,
+      runId: "duplicate-result-id",
+    });
+
+    expect(await client.checkRun.findMany({ where: { monitorId: monitor.id } })).toEqual([
+      expect.objectContaining({
+        jobKey: "job:web-123",
+        triggeredBy: "manual",
+      }),
+    ]);
+    expect(await repository.hasJobRun("job:web-123")).toBe(true);
+  });
 });
+
+async function isolatedClient() {
+  const directory = await mkdtemp(join(tmpdir(), "checkoutwatch-run-check-"));
+  const databasePath = join(directory, "test.db");
+  await copyFile(resolve(import.meta.dirname, "../../../var/dev.db"), databasePath);
+  const client = createPrismaClient(`file:${databasePath.replaceAll("\\", "/")}`);
+  clients.push(client);
+  return client;
+}

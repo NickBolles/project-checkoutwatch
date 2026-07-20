@@ -1,4 +1,5 @@
 import { Queue, Worker, type ConnectionOptions } from "bullmq";
+import { DEFAULT_QUEUE_PREFIX } from "./constants.js";
 import type { EnqueueOpts, JobHandler, JobQueue, ProcessorHandle } from "./types.js";
 
 export class BullMQDriver implements JobQueue {
@@ -10,7 +11,7 @@ export class BullMQDriver implements JobQueue {
 
   constructor(
     redisUrl: string,
-    prefix = `checkoutwatch-${process.pid}`,
+    prefix = DEFAULT_QUEUE_PREFIX,
     cancellableNames: readonly string[] = [],
   ) {
     this.connection = { url: redisUrl };

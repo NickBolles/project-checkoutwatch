@@ -77,6 +77,7 @@ model CheckRun {
   monitor            Monitor   @relation(fields: [monitorId], references: [id])
   status             String
   triggeredBy        String    @default("schedule")
+  jobKey             String?   @unique
   startedAt          DateTime
   finishedAt         DateTime?
   durationMs         Int?

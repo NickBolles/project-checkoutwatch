@@ -2,8 +2,9 @@ import { createHmac } from "node:crypto";
 import { afterEach, describe, expect, it } from "vitest";
 import { MemoryDriver } from "@checkoutwatch/queue";
 import { PrismaMonitorRunRepository } from "@checkoutwatch/db";
+import { parseEnv } from "@checkoutwatch/core/server";
 import { action as customerDataRequest } from "../app/routes/webhooks.customers_data_request.js";
-import { uninstallShop } from "../app/services/webhooks.server.js";
+import { uninstallShop, verifiedShopifyPayload } from "../app/services/webhooks.server.js";
 import type { WebRuntime } from "../app/services/runtime.server.js";
 import { isolatedClient } from "./helpers.js";
 
@@ -65,6 +66,33 @@ describe("Phase 6 Shopify webhooks", () => {
           headers: { "x-shopify-topic": "customers/data_request", "x-shopify-hmac-sha256": "bad" },
         }),
       }),
+    ).rejects.toMatchObject({ status: 401 });
+  });
+
+  it("rejects the committed mock secret when credentials select real Shopify auth", async () => {
+    const body = JSON.stringify({ shop_domain: "victim.myshopify.com" });
+    const config = parseEnv({
+      NODE_ENV: "test",
+      SHOPIFY_API_KEY: "real-key",
+      SHOPIFY_API_SECRET: "real-secret",
+    });
+
+    await expect(
+      verifiedShopifyPayload(signedRequest(body, "shop/redact"), "shop/redact", config),
+    ).rejects.toMatchObject({ status: 401 });
+  });
+
+  it("fails closed for mock-mode webhook verification in production", async () => {
+    const body = JSON.stringify({ shop_domain: "victim.myshopify.com" });
+    const config = parseEnv({
+      NODE_ENV: "production",
+      SHOPIFY_AUTH: "mock",
+      ENCRYPTION_KEY: Buffer.alloc(32).toString("base64"),
+      CONTROL_PROBE_URL: "https://probe.example.com/health",
+    });
+
+    await expect(
+      verifiedShopifyPayload(signedRequest(body, "shop/redact"), "shop/redact", config),
     ).rejects.toMatchObject({ status: 401 });
   });
 });

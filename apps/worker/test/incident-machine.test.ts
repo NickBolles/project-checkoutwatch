@@ -77,6 +77,14 @@ describe("pure incident state machine", () => {
     ]);
   });
 
+  it("keeps a confirmed hard-down STORE_UNREACHABLE failure alertable", () => {
+    const first = transitionIncident(base, failed("STORE_UNREACHABLE"));
+    expect(first.actions).toEqual([{ type: "scheduleRecheck", delayMs: 90_000 }]);
+    expect(transitionIncident(first.state, failed("STORE_UNREACHABLE")).actions).toEqual([
+      { type: "openIncident" },
+    ]);
+  });
+
   it("reopens a recent incident during cooldown without an opened-alert action", () => {
     const state = {
       ...base,

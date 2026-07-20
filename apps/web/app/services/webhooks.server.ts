@@ -1,19 +1,18 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { getConfig, type AppConfig } from "@checkoutwatch/core/server";
 import type { WebRuntime } from "./runtime.server.js";
 
 export async function verifiedShopifyPayload<T>(
   request: Request,
   expectedTopic: string,
+  config: AppConfig = getConfig(),
 ): Promise<T> {
   const rawBody = await request.text();
   const topic = request.headers.get("x-shopify-topic")?.toLowerCase();
   if (topic !== expectedTopic.toLowerCase())
     throw new Response("Unexpected webhook topic", { status: 400 });
   const received = request.headers.get("x-shopify-hmac-sha256") ?? "";
-  const secret =
-    process.env.SHOPIFY_AUTH === "real"
-      ? process.env.SHOPIFY_API_SECRET
-      : (process.env.SHOPIFY_MOCK_WEBHOOK_SECRET ?? "checkoutwatch-local-webhook-secret");
+  const secret = webhookSecret(config);
   if (!secret || !validHmac(rawBody, received, secret))
     throw new Response("Invalid webhook signature", { status: 401 });
   try {
@@ -21,6 +20,12 @@ export async function verifiedShopifyPayload<T>(
   } catch {
     throw new Response("Invalid JSON payload", { status: 400 });
   }
+}
+
+function webhookSecret(config: AppConfig): string | undefined {
+  if (config.shopifyAuth === "real") return config.shopifyApiSecret;
+  if (config.nodeEnv === "production") return undefined;
+  return config.shopifyMockWebhookSecret ?? "checkoutwatch-local-webhook-secret";
 }
 
 export async function uninstallShop(runtime: WebRuntime, shopDomain: string) {

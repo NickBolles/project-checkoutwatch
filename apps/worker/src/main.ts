@@ -14,9 +14,9 @@ import {
 } from "@checkoutwatch/db";
 import { CheckoutRunner, LocalArtifactStore } from "@checkoutwatch/engine";
 import { createJobQueue } from "@checkoutwatch/queue";
-import { MockShopifyAdmin } from "@checkoutwatch/shopify";
 import { registerJobs } from "./jobs/index.js";
 import { MonitorScheduler, startScheduler } from "./scheduler.js";
+import { createShopifyAdminFactory } from "./shopify-admin-factory.js";
 import { createServer } from "node:http";
 
 export async function startWorker() {
@@ -49,7 +49,7 @@ export async function startWorker() {
     },
     changePolling: {
       repository: new PrismaStoreChangeRepository(client),
-      shopify: new MockShopifyAdmin(config.fixtureStorefrontUrl),
+      shopify: createShopifyAdminFactory(config),
     },
     artifactDir: config.artifactDir,
   });

@@ -1,0 +1,14 @@
+.git
+.github
+.tools
+.pnpm-store
+node_modules
+**/node_modules
+**/dist
+**/build
+var
+.env
+.env.*
+!.env.example
+*.log
+*.tsbuildinfo

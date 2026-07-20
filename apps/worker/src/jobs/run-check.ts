@@ -14,7 +14,12 @@ export interface RunnableMonitor {
 export interface RunCheckRepository {
   hasJobRun(jobKey: string): Promise<boolean>;
   acquireRunLock(monitorId: string, now: Date, staleBefore: Date): Promise<RunnableMonitor | null>;
-  persistRun(monitorId: string, jobKey: string, result: CheckRunResult): Promise<void>;
+  persistRun(
+    monitorId: string,
+    jobKey: string,
+    trigger: "schedule" | "manual" | "recheck",
+    result: CheckRunResult,
+  ): Promise<void>;
   recordScriptOriginDiff?(runId: string): Promise<unknown>;
   clearRunLock(monitorId: string, acquiredAt: Date): Promise<void>;
 }
@@ -54,7 +59,7 @@ export function createRunCheckHandler(
         ...(monitor.variantId ? { variantId: monitor.variantId } : {}),
         timeoutMs,
       });
-      await repository.persistRun(monitor.id, jobKey, result);
+      await repository.persistRun(monitor.id, jobKey, payload.trigger ?? "schedule", result);
       await repository.recordScriptOriginDiff?.(result.runId);
       await options.afterPersist?.(result.runId);
       return "completed";

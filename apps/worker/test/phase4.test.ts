@@ -103,7 +103,7 @@ describe("Phase 4 failure intelligence", () => {
     const admin = new MockShopifyAdmin();
     const poll = createPollStoreChangesHandler(
       repository,
-      admin,
+      { forShop: () => admin },
       () => new Date("2026-07-20T12:00:00Z"),
     );
     expect(await poll()).toBe(0);

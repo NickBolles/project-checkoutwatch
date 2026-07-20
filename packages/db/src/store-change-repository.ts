@@ -5,6 +5,7 @@ import { writeJson } from "./json.js";
 export interface ChangePollShop {
   id: string;
   shopDomain: string;
+  accessToken: string | null;
 }
 
 export interface ScriptOriginDiff {
@@ -30,7 +31,7 @@ export class PrismaStoreChangeRepository {
   async shopsForPolling(): Promise<ChangePollShop[]> {
     return this.client.shop.findMany({
       where: { uninstalledAt: null, monitors: { some: { enabled: true } } },
-      select: { id: true, shopDomain: true },
+      select: { id: true, shopDomain: true, accessToken: true },
     });
   }
 

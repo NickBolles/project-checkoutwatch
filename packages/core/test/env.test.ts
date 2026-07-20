@@ -8,6 +8,7 @@ describe("parseEnv", () => {
     expect(config).toMatchObject({
       databaseUrl: "file:./var/dev.db",
       queueDriver: "memory",
+      queuePrefix: "checkoutwatch",
       alertTransport: "mock",
       diagnosisProvider: "heuristic",
       shopifyAuth: "mock",
@@ -15,6 +16,25 @@ describe("parseEnv", () => {
       inlineWorker: true,
     });
     expect(Buffer.from(config.encryptionKey, "base64")).toHaveLength(32);
+  });
+
+  it("requires an explicit non-loopback control probe in production", () => {
+    const production = {
+      NODE_ENV: "production",
+      ENCRYPTION_KEY: Buffer.alloc(32).toString("base64"),
+    } as const;
+
+    expect(() => parseEnv(production)).toThrow(/CONTROL_PROBE_URL/);
+    expect(() =>
+      parseEnv({ ...production, CONTROL_PROBE_URL: "http://127.0.0.1:4602/health" }),
+    ).toThrow(/loopback/);
+    expect(() =>
+      parseEnv({ ...production, CONTROL_PROBE_URL: "http://localhost:4602/health" }),
+    ).toThrow(/loopback/);
+    expect(
+      parseEnv({ ...production, CONTROL_PROBE_URL: "https://probe.example.com/health" })
+        .controlProbeUrl,
+    ).toBe("https://probe.example.com/health");
   });
 
   it("accepts explicit overrides and derives real adapters from credential presence", () => {

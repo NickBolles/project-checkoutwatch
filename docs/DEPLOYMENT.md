@@ -24,11 +24,13 @@ All Shopify routes verify `X-Shopify-Hmac-Sha256` over the raw body with `SHOPIF
 
 ## 2. Provision Postgres and migrate
 
-Production must use Postgres. Change the Prisma datasource provider in `packages/db/prisma/schema.prisma` from `sqlite` to `postgresql`, set `DATABASE_URL=postgresql://...`, regenerate the Prisma client, and create/review a production migration. Preserve the portable string-backed JSON columns. Add a Postgres partial unique index for one open incident per monitor as defense in depth in addition to `Monitor.openIncidentId @unique`. Run `pnpm db:generate` and the deployment migration command against a staging database before production.
+Production must use Postgres. Keep the checked-in portable schema on SQLite for local tests; `pnpm db:generate:postgres`, `pnpm db:check:postgres`, and `pnpm db:push:postgres` generate and validate the equivalent PostgreSQL schema under the ignored `packages/db/prisma/generated/` directory. Review the generated SQL/migration plan and use a migration-based rollout rather than `db push` for an established production database. Add a Postgres partial unique index for one open incident per monitor as defense in depth in addition to `Monitor.openIncidentId @unique`.
 
 ## 3. Provision Redis and the worker
 
-Set `REDIS_URL` and `QUEUE_DRIVER=bullmq`. Deploy exactly one or more standalone worker processes with `pnpm worker`; do not also set `INLINE_WORKER=1`. Set `INLINE_WORKER=0` on both web and worker deployments. Run the BullMQ contract suite against the production Redis class before launch. `ENGINE_CONCURRENCY` controls Chromium concurrency. Expose the worker's `WORKER_HEALTH_PORT` (default 3001) only to the platform health checker at `/healthz`.
+Set `REDIS_URL`, `QUEUE_DRIVER=bullmq`, and one stable `QUEUE_PREFIX` shared by every web and worker replica (default `checkoutwatch`). Never derive or template the prefix from a process/container id. Deploy exactly one or more standalone worker processes with `pnpm worker`; do not also set `INLINE_WORKER=1`. Set `INLINE_WORKER=0` on both web and worker deployments. Run `REDIS_URL=redis://... pnpm --filter @checkoutwatch/queue test` against the production Redis class before launch; this includes web-to-worker consumption and cross-instance cancellation. `ENGINE_CONCURRENCY` controls Chromium concurrency. Expose the worker's `WORKER_HEALTH_PORT` (default 3001) only to the platform health checker at `/healthz`.
+
+In real Shopify mode the worker decrypts each installed shop's stored offline access token and polls the Admin GraphQL API for main-theme changes. Verify that an authenticated app request has stored an offline token before enabling monitoring; missing or undecryptable tokens fail the poll closed and are never replaced with fixture data.
 
 ## 4. Configure alerts and diagnosis
 
@@ -37,12 +39,22 @@ Set `REDIS_URL` and `QUEUE_DRIVER=bullmq`. Deploy exactly one or more standalone
 - Slack and Discord use merchant-provided webhook URLs; no global credential is required.
 - Anthropic: set `ANTHROPIC_API_KEY`, optionally set `LLM_MODEL`, and set `DIAGNOSIS_PROVIDER=anthropic`. Without it the deterministic heuristic stays active. Diagnosis failure never delays the initial alert.
 
-## 5. Install Playwright and deploy
+## 5. Container deployment
 
-Install Node 20+ and pnpm, run `pnpm install --frozen-lockfile`, then `pnpm exec playwright install chromium` (plus the OS dependency command required by the target Linux image). Set `ARTIFACT_STORE=local` and a persistent `ARTIFACT_DIR` only for a single durable worker; multi-replica production requires the planned S3-compatible artifact-store adapter before scaling. Build with `pnpm build`, run migrations, deploy web and worker separately, and health-check web `/healthz` plus worker `/healthz` on `WORKER_HEALTH_PORT`.
+Build `apps/web/Dockerfile` for the React Router server and `apps/worker/Dockerfile` for the worker. The worker image is pinned to the Playwright 1.53.1 Jammy image, matching `packages/engine`, so Chromium and its OS libraries stay version-aligned. The web image uses Node 20. Both images generate the PostgreSQL Prisma client during their build.
 
-Required production variables: `DATABASE_URL`, `REDIS_URL`, `QUEUE_DRIVER=bullmq`, `SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET`, `SHOPIFY_APP_URL`, `SHOPIFY_SCOPES`, `SHOPIFY_AUTH=real`, `ENCRYPTION_KEY`, provider credentials for enabled real channels, `ALERT_TRANSPORT=real`, and `INLINE_WORKER=0`. Optional: `ANTHROPIC_API_KEY`, `LLM_MODEL`, interval/debounce tuning, artifact paths, control probe, and payment-origin configuration. See `.env.example` for every default and exact spelling.
+`docker compose up --build` starts the executable prod-parity topology: PostgreSQL, Redis, the local fixture/control probe, a schema-init service, web, and the Playwright worker. It intentionally uses mock Shopify and alert transports and contains no live credentials. The production webhook verifier rejects mock signatures when `NODE_ENV=production`, even in this credential-free topology.
+
+Set `ARTIFACT_STORE=local` and a persistent shared `ARTIFACT_DIR` only for a single durable worker; multi-replica production requires the planned S3-compatible artifact-store adapter before scaling. Health-check web `/healthz` and worker `/healthz` on `WORKER_HEALTH_PORT`.
+
+Required production variables: `DATABASE_URL`, `REDIS_URL`, `QUEUE_DRIVER=bullmq`, stable shared `QUEUE_PREFIX`, `SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET`, `SHOPIFY_APP_URL`, `SHOPIFY_SCOPES`, `SHOPIFY_AUTH=real`, `ENCRYPTION_KEY`, `CONTROL_PROBE_URL`, provider credentials for enabled real channels, `ALERT_TRANSPORT=real`, and `INLINE_WORKER=0`. `CONTROL_PROBE_URL` must be an independently hosted, known-good HTTPS endpoint; production startup rejects a missing or loopback value. Optional: `ANTHROPIC_API_KEY`, `LLM_MODEL`, interval/debounce tuning, artifact paths, and payment-origin configuration. See `.env.example` for every default and exact spelling.
+
+The control probe is used only to classify an origin connection/DNS/TLS failure during `visit_product`: control passes means `STORE_UNREACHABLE` and remains alertable; control fails means CheckoutWatch cannot judge and records `CONTROL_PROBE_FAILED` as non-alertable `error`. A store failure later in the checkout walk remains an alertable step timeout/failure.
 
 ## 6. Preflight and rollout
 
-Run typecheck, lint, the full unit suite, engine suite, and E2E suite with no credentials first. In staging, verify billing callbacks, all webhook rejection cases, Redis redelivery/idempotency, browser launch, the control probe, alert delivery status callbacks, retention, and graceful shutdown. Publish stable egress IPs and complete the live Shopify automated-traffic policy review described in `COMPLIANCE.md`. The 60-second status-page cache and rate limiter are per web process; use a shared edge/cache rate limiter when running multiple replicas.
+Run `pnpm typecheck`, `pnpm lint`, and `pnpm test` with no credentials first. In staging, run the Redis-backed queue contract command from section 3, verify billing callbacks and all webhook rejection cases, launch Chromium from the worker image, and perform a store-down drill: stop the fixture/store origin while leaving the independent control endpoint healthy, then confirm two `STORE_UNREACHABLE` runs open an incident and enqueue an alert. Also verify alert delivery callbacks, retention, and graceful shutdown. Publish stable egress IPs and complete the live Shopify automated-traffic policy review described in `COMPLIANCE.md`. The 60-second status-page cache and rate limiter are per web process; use a shared edge/cache rate limiter when running multiple replicas.
+
+## 7. Continuous integration
+
+`.github/workflows/ci.yml` has a credential-free quality lane (install, SQLite migration/seed, Chromium install, typecheck, lint, full tests, and build) and a prod-parity lane. The prod-parity lane validates and applies the generated schema to PostgreSQL, runs the cross-instance BullMQ contract against Redis, validates Compose, and builds both production images.

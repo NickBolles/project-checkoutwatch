@@ -2,8 +2,8 @@ import type { PrismaClient } from "@prisma/client";
 import type { AlertChannelAdapter } from "@checkoutwatch/alerts";
 import type { CheckoutRunner } from "@checkoutwatch/engine";
 import type { JobQueue, ProcessorHandle } from "@checkoutwatch/queue";
-import type { ShopifyAdmin } from "@checkoutwatch/shopify";
 import type { DiagnoseRunOptions } from "../diagnose-run.js";
+import type { ShopifyAdminFactory } from "../shopify-admin-factory.js";
 import { IncidentService, type IncidentServiceOptions } from "../incident-service.js";
 import {
   createDiagnoseIncidentHandler,
@@ -31,7 +31,7 @@ export interface RegisterJobsOptions {
   diagnosis?: DiagnoseRunOptions & { timeoutMs?: number };
   changePolling?: {
     repository: StoreChangePollRepository;
-    shopify: Pick<ShopifyAdmin, "getMainTheme">;
+    shopify: ShopifyAdminFactory;
   };
   artifactDir?: string;
 }

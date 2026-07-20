@@ -1,4 +1,4 @@
-import type { PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 import type { PlanName } from "@checkoutwatch/core";
 import { writeJson } from "./json.js";
 import { PrismaStoreChangeRepository } from "./store-change-repository.js";
@@ -60,7 +60,9 @@ export class PrismaMonitorRunRepository {
   }
 
   async hasJobRun(jobKey: string): Promise<boolean> {
-    return (await this.client.checkRun.count({ where: { triggeredBy: jobKey } })) > 0;
+    return (
+      (await this.client.checkRun.findUnique({ where: { jobKey }, select: { id: true } })) !== null
+    );
   }
 
   async acquireRunLock(
@@ -90,47 +92,63 @@ export class PrismaMonitorRunRepository {
     };
   }
 
-  async persistRun(monitorId: string, jobKey: string, result: PersistableCheckRun): Promise<void> {
-    await this.client.$transaction(async (transaction) => {
-      if (await transaction.checkRun.count({ where: { triggeredBy: jobKey } })) return;
-      await transaction.checkRun.create({
-        data: {
-          id: result.runId,
-          monitorId,
-          status: result.status,
-          triggeredBy: jobKey,
-          startedAt: new Date(result.startedAt),
-          finishedAt: new Date(result.finishedAt),
-          durationMs: result.durationMs,
-          stepTimingsJson: writeJson(
-            result.steps.map((step) => ({
-              step: step.name,
-              ms: step.durationMs,
-              ...(step.httpStatus === undefined ? {} : { httpStatus: step.httpStatus }),
-            })),
-          ),
-          ...(result.failureStep ? { failureStep: result.failureStep } : {}),
-          ...(result.failureCode ? { failureCode: result.failureCode } : {}),
-          ...(result.failureMessage ? { failureMessage: result.failureMessage } : {}),
-          ...(result.screenshotPath ? { screenshotPath: result.screenshotPath } : {}),
-          consoleJson: writeJson(
-            result.console.map((entry) => ({
-              level: entry.type === "warning" ? "warn" : "error",
-              text: entry.text,
-            })),
-          ),
-          failedRequestsJson: writeJson(result.failedRequests),
-          scriptOriginsJson: writeJson(result.scriptOrigins),
-        },
+  async persistRun(
+    monitorId: string,
+    jobKey: string,
+    trigger: "schedule" | "manual" | "recheck",
+    result: PersistableCheckRun,
+  ): Promise<void> {
+    try {
+      await this.client.$transaction(async (transaction) => {
+        await transaction.checkRun.create({
+          data: {
+            id: result.runId,
+            monitorId,
+            status: result.status,
+            triggeredBy: trigger,
+            jobKey,
+            startedAt: new Date(result.startedAt),
+            finishedAt: new Date(result.finishedAt),
+            durationMs: result.durationMs,
+            stepTimingsJson: writeJson(
+              result.steps.map((step) => ({
+                step: step.name,
+                ms: step.durationMs,
+                ...(step.httpStatus === undefined ? {} : { httpStatus: step.httpStatus }),
+              })),
+            ),
+            ...(result.failureStep ? { failureStep: result.failureStep } : {}),
+            ...(result.failureCode ? { failureCode: result.failureCode } : {}),
+            ...(result.failureMessage ? { failureMessage: result.failureMessage } : {}),
+            ...(result.screenshotPath ? { screenshotPath: result.screenshotPath } : {}),
+            consoleJson: writeJson(
+              result.console.map((entry) => ({
+                level: entry.type === "warning" ? "warn" : "error",
+                text: entry.text,
+              })),
+            ),
+            failedRequestsJson: writeJson(result.failedRequests),
+            scriptOriginsJson: writeJson(result.scriptOrigins),
+          },
+        });
+        await transaction.monitor.update({
+          where: { id: monitorId },
+          data: {
+            lastRunAt: new Date(result.finishedAt),
+            lastStatus: result.status,
+          },
+        });
       });
-      await transaction.monitor.update({
-        where: { id: monitorId },
-        data: {
-          lastRunAt: new Date(result.finishedAt),
-          lastStatus: result.status,
-        },
-      });
-    });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002" &&
+        (await this.hasJobRun(jobKey))
+      ) {
+        return;
+      }
+      throw error;
+    }
   }
 
   async clearRunLock(monitorId: string, acquiredAt: Date): Promise<void> {

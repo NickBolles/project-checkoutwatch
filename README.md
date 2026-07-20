@@ -23,6 +23,16 @@ Verified research (July 2026):
 
 Install dependencies with `pnpm install`, then install the headless browser with `pnpm browser:install`. Use `pnpm fixture`, `pnpm test:engine`, or `pnpm demo:check -- --mode payment_iframe_missing` for the local fixture and engine.
 
+Run the complete offline incident pipeline with one command:
+
+```powershell
+pnpm demo
+```
+
+It boots the fixture in-process, runs and rechecks a broken checkout, opens an incident, produces a heuristic diagnosis and mock delivery, restores the checkout, and confirms resolution. No Shopify or provider credential is used.
+
+Production setup and policy constraints are in [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) and [`docs/COMPLIANCE.md`](./docs/COMPLIANCE.md).
+
 Paste this into Claude Code from the repo root to start:
 
 ```

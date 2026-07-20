@@ -20,6 +20,8 @@ import {
   type RunCheckRepository,
 } from "./run-check.js";
 import { createReconcilePlanHandler, type ReconcilePlanPayload } from "./reconcile-plan.js";
+import { createRetentionHandler } from "./retention.js";
+import { logger } from "@checkoutwatch/core";
 
 export interface RegisterJobsOptions {
   client?: PrismaClient;
@@ -31,6 +33,7 @@ export interface RegisterJobsOptions {
     repository: StoreChangePollRepository;
     shopify: Pick<ShopifyAdmin, "getMainTheme">;
   };
+  artifactDir?: string;
 }
 
 export async function registerJobs(
@@ -40,6 +43,35 @@ export async function registerJobs(
   concurrency: number,
   options: RegisterJobsOptions = {},
 ): Promise<ProcessorHandle[]> {
+  const guarded =
+    <T>(
+      name: string,
+      handler: (
+        payload: T,
+        context: { id: string; name: string; attempt: number },
+      ) => Promise<unknown>,
+    ) =>
+    async (payload: T, context: { id: string; name: string; attempt: number }) => {
+      const startedAt = Date.now();
+      try {
+        await handler(payload, context);
+        logger.info(
+          {
+            job: name,
+            jobId: context.id,
+            attempt: context.attempt,
+            durationMs: Date.now() - startedAt,
+          },
+          "job completed",
+        );
+      } catch (error) {
+        logger.error(
+          { err: error, job: name, jobId: context.id, attempt: context.attempt, payload },
+          "job failed; queue retry or dead-letter policy applies",
+        );
+        throw error;
+      }
+    };
   const incidentService = options.client
     ? new IncidentService(options.client, queue, options.incident)
     : undefined;
@@ -51,16 +83,16 @@ export async function registerJobs(
   const handles = [
     await queue.process<RunCheckPayload>(
       "run-check",
-      async (payload, context) => {
+      guarded("run-check", async (payload, context) => {
         await runCheck(payload, context);
-      },
+      }),
       { concurrency },
     ),
     await queue.process<RunCheckPayload>(
       "recheck",
-      async (payload, context) => {
+      guarded("recheck", async (payload, context) => {
         await runCheck({ ...payload, trigger: "recheck" }, context);
-      },
+      }),
       { concurrency },
     ),
   ];
@@ -72,21 +104,38 @@ export async function registerJobs(
     );
     const diagnose = createDiagnoseIncidentHandler(options.client, options.diagnosis);
     handles.push(
-      await queue.process<DispatchAlertPayload>("dispatch-alert", async (payload) => {
-        await dispatch(payload);
-      }),
+      await queue.process<DispatchAlertPayload>(
+        "dispatch-alert",
+        guarded("dispatch-alert", async (payload) => {
+          await dispatch(payload);
+        }),
+      ),
     );
     handles.push(
-      await queue.process<DiagnoseIncidentPayload>("diagnose-incident", async (payload) => {
-        await diagnose(payload);
-      }),
+      await queue.process<DiagnoseIncidentPayload>(
+        "diagnose-incident",
+        guarded("diagnose-incident", async (payload) => {
+          await diagnose(payload);
+        }),
+      ),
     );
     const reconcilePlan = createReconcilePlanHandler(options.client);
     handles.push(await queue.process<ReconcilePlanPayload>("reconcile-plan", reconcilePlan));
+    const retention = createRetentionHandler(
+      options.client,
+      options.artifactDir ?? "var/artifacts",
+    );
+    handles.push(
+      await queue.process(
+        "retention",
+        guarded("retention", async (payload) => retention(payload)),
+      ),
+    );
   } else {
     handles.push(await queue.process("dispatch-alert", async () => {}));
     handles.push(await queue.process("diagnose-incident", async () => {}));
     handles.push(await queue.process("reconcile-plan", async () => {}));
+    handles.push(await queue.process("retention", async () => {}));
   }
   if (options.changePolling) {
     const poll = createPollStoreChangesHandler(

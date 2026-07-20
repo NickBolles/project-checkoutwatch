@@ -42,6 +42,13 @@ export default function SettingsRoute() {
           </InlineStack>
         </Card>
         <Card>
+          <Text as="h2" variant="headingMd">
+            Public status page
+          </Text>
+          <Text as="p">Publish sanitized checkout availability and incident history on Pro.</Text>
+          <Button url="/settings/status-page">Configure status page</Button>
+        </Card>
+        <Card>
           <Form method="post">
             <FormLayout>
               <TextField

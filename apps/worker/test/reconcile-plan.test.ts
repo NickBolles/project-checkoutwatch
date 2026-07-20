@@ -22,6 +22,7 @@ describe("downgrade reconciliation", () => {
             { type: "sms", destination: "mock://sms" },
           ],
         },
+        statusPage: { create: { slug: "reconcile", title: "Status", enabled: true } },
       },
     });
     for (let index = 0; index < 5; index += 1)
@@ -50,7 +51,10 @@ describe("downgrade reconciliation", () => {
     ).toMatchObject({ enabled: false });
     expect(
       await client.entitlementLog.count({ where: { shopId: shop.id, action: "skipped" } }),
-    ).toBe(5);
+    ).toBe(6);
+    expect(await client.statusPage.findUniqueOrThrow({ where: { shopId: shop.id } })).toMatchObject({
+      enabled: false,
+    });
     expect(
       JSON.parse(
         (await client.shop.findUniqueOrThrow({ where: { id: shop.id } })).reconciliationJson,

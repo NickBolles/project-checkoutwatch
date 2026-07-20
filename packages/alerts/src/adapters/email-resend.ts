@@ -58,6 +58,9 @@ export class ResendEmailAdapter implements AlertChannelAdapter {
     const timestamp = header(headers, "svix-timestamp");
     const supplied = header(headers, "svix-signature")?.split(" ").at(-1);
     if (!id || !timestamp || !supplied) return false;
+    const timestampSeconds = Number(timestamp);
+    if (!Number.isFinite(timestampSeconds) || Math.abs(Date.now() / 1000 - timestampSeconds) > 300)
+      return false;
     const secret = this.options.webhookSecret.startsWith("whsec_")
       ? Buffer.from(this.options.webhookSecret.slice(6), "base64")
       : Buffer.from(this.options.webhookSecret);

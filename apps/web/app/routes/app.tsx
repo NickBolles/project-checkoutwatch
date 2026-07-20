@@ -11,6 +11,11 @@ export default function AppLayout() {
           <Navigation.Section
             items={[
               {
+                label: "Status page",
+                selected: location.pathname.startsWith("/settings/status-page"),
+                onClick: () => void navigate("/settings/status-page"),
+              },
+              {
                 label: "Dashboard",
                 selected: location.pathname === "/",
                 onClick: () => void navigate("/"),

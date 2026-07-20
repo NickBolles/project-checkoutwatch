@@ -105,6 +105,10 @@ function registerShutdown(
     scheduler.close();
     await Promise.all(handles.map((handle) => handle.close()));
     await queue.close();
+    await client.monitor.updateMany({
+      where: { runningAt: { not: null } },
+      data: { runningAt: null },
+    });
     await client.$disconnect();
   };
   process.once("SIGINT", () => void close());

@@ -1,4 +1,4 @@
-import { clampInterval, type PlanName } from "@checkoutwatch/core";
+import { clampInterval, logger, type PlanName } from "@checkoutwatch/core";
 import type { JobQueue } from "@checkoutwatch/queue";
 
 export interface SchedulableMonitor {
@@ -50,7 +50,11 @@ export function startScheduler(
   intervalMs = 30_000,
 ): { close(): void } {
   const timer = setInterval(() => {
-    void scheduler.tick();
+    void scheduler.tick().then(
+      (runs) => logger.info({ scheduler: "monitor", runs }, "scheduler tick completed"),
+      (error: unknown) =>
+        logger.error({ err: error, scheduler: "monitor" }, "scheduler tick failed"),
+    );
   }, intervalMs);
   return { close: () => clearInterval(timer) };
 }

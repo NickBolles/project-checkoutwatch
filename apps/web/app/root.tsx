@@ -1,6 +1,6 @@
 import "@shopify/polaris/build/esm/styles.css";
 import { AppProvider } from "@shopify/polaris";
-import { Links, Meta, Outlet, Scripts, ScrollRestoration } from "react-router";
+import { Links, Meta, Outlet, Scripts, ScrollRestoration, useLocation } from "react-router";
 
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
@@ -21,6 +21,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 export default function Root() {
+  const location = useLocation();
+  if (location.pathname.startsWith("/status/")) return <Outlet />;
   return (
     <AppProvider i18n={{}}>
       <Outlet />

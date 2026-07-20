@@ -13,6 +13,7 @@ export type FailureCode =
   | "BOT_CHALLENGE"
   | "STORE_UNREACHABLE"
   | "CONTROL_PROBE_FAILED"
+  | "ENGINE_WATCHDOG_TIMEOUT"
   | "BROWSER_ERROR"
   | `TIMEOUT_STEP_${Uppercase<StepName>}`;
 
@@ -29,8 +30,16 @@ export interface StepResult {
   httpStatus?: number;
 }
 
-export interface ConsoleArtifact { type: "warning" | "error"; text: string }
-export interface FailedRequestArtifact { url: string; method: string; status?: number; error?: string }
+export interface ConsoleArtifact {
+  type: "warning" | "error";
+  text: string;
+}
+export interface FailedRequestArtifact {
+  url: string;
+  method: string;
+  status?: number;
+  error?: string;
+}
 
 export interface CheckRunResult {
   runId: string;

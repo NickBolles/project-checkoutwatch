@@ -17,6 +17,7 @@ import { createJobQueue } from "@checkoutwatch/queue";
 import { MockShopifyAdmin } from "@checkoutwatch/shopify";
 import { registerJobs } from "./jobs/index.js";
 import { MonitorScheduler, startScheduler } from "./scheduler.js";
+import { createServer } from "node:http";
 
 export async function startWorker() {
   const config = getConfig();
@@ -50,6 +51,7 @@ export async function startWorker() {
       repository: new PrismaStoreChangeRepository(client),
       shopify: new MockShopifyAdmin(config.fixtureStorefrontUrl),
     },
+    artifactDir: config.artifactDir,
   });
   const monitorScheduler = new MonitorScheduler(repository, queue);
   const scheduler = startScheduler(monitorScheduler);
@@ -60,17 +62,44 @@ export async function startWorker() {
       { jobId: `theme-poll:${Math.floor(Date.now() / 3_600_000)}` },
     );
   await enqueueChangePoll();
+  const enqueueRetention = () =>
+    queue.add("retention", {}, { jobId: `retention:${new Date().toISOString().slice(0, 10)}` });
+  await enqueueRetention();
   const changePollTimer = setInterval(() => {
     void enqueueChangePoll();
   }, 3_600_000);
+  const retentionTimer = setInterval(() => void enqueueRetention(), 86_400_000);
+  const healthServer = createServer((request, response) => {
+    if (request.url !== "/healthz") {
+      response.writeHead(404).end("not found");
+      return;
+    }
+    void client.$queryRawUnsafe("SELECT 1").then(
+      () =>
+        response
+          .writeHead(200, { "content-type": "application/json" })
+          .end('{"ok":true,"service":"worker"}'),
+      () =>
+        response
+          .writeHead(503, { "content-type": "application/json" })
+          .end('{"ok":false,"service":"worker"}'),
+    );
+  });
+  healthServer.listen(config.workerHealthPort, "0.0.0.0");
   await monitorScheduler.tick();
   logger.info({ queueDriver: config.queueDriver }, "CheckoutWatch worker started");
   return {
     async close() {
       scheduler.close();
       clearInterval(changePollTimer);
+      clearInterval(retentionTimer);
+      await new Promise<void>((resolve) => healthServer.close(() => resolve()));
       await Promise.all(processors.map((processor) => processor.close()));
       await queue.close();
+      await client.monitor.updateMany({
+        where: { runningAt: { not: null } },
+        data: { runningAt: null },
+      });
       await client.$disconnect();
     },
   };
@@ -103,5 +132,14 @@ if (
   process.argv[1] &&
   import.meta.url === new URL(`file:///${process.argv[1].replaceAll("\\", "/")}`).href
 ) {
-  await startWorker();
+  const worker = await startWorker();
+  const shutdown = () => void worker.close().finally(() => process.exit());
+  process.once("SIGINT", shutdown);
+  process.once("SIGTERM", shutdown);
+  process.on("unhandledRejection", (error) =>
+    logger.fatal({ err: error }, "unhandled worker rejection"),
+  );
+  process.on("uncaughtException", (error) =>
+    logger.fatal({ err: error }, "uncaught worker exception"),
+  );
 }

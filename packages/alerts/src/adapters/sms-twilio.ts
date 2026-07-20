@@ -66,7 +66,18 @@ export class TwilioSmsAdapter implements AlertChannelAdapter {
       ([key]) => key.toLowerCase() === "x-twilio-signature",
     )?.[1];
     if (!supplied) return false;
-    const expected = createHmac("sha256", this.options.authToken).update(rawBody).digest("base64");
+    const url = Object.entries(headers).find(
+      ([key]) => key.toLowerCase() === "x-checkoutwatch-webhook-url",
+    )?.[1];
+    if (!url) return false;
+    const params = new URLSearchParams(rawBody);
+    const signaturePayload = [...params.keys()]
+      .sort()
+      .map((key) => `${key}${params.get(key) ?? ""}`)
+      .join("");
+    const expected = createHmac("sha1", this.options.authToken)
+      .update(`${url}${signaturePayload}`)
+      .digest("base64");
     const a = Buffer.from(expected);
     const b = Buffer.from(supplied);
     return a.length === b.length && timingSafeEqual(a, b);

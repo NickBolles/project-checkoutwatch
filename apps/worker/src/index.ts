@@ -7,3 +7,4 @@ export * from "./incident-machine.js";
 export * from "./incident-service.js";
 export * from "./jobs/run-check.js";
 export * from "./jobs/reconcile-plan.js";
+export * from "./jobs/retention.js";

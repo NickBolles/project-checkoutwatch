@@ -41,6 +41,7 @@ const rawEnvSchema = z
     ARTIFACT_DIR: z.string().min(1).default("var/artifacts"),
     ENCRYPTION_KEY: optionalString,
     ENGINE_CONCURRENCY: z.coerce.number().int().min(1).max(32).default(2),
+    WORKER_HEALTH_PORT: z.coerce.number().int().min(1).max(65_535).default(3001),
     RECHECK_DELAY_SECONDS: z.coerce.number().int().min(0).default(90),
     REOPEN_COOLDOWN_MINUTES: z.coerce.number().int().min(0).default(30),
     PRODUCT_UNAVAILABLE_AUTOPAUSE: z.coerce.number().int().min(2).default(6),
@@ -123,6 +124,7 @@ export interface AppConfig {
   artifactDir: string;
   encryptionKey: string;
   engineConcurrency: number;
+  workerHealthPort: number;
   recheckDelaySeconds: number;
   reopenCooldownMinutes: number;
   productUnavailableAutopause: number;
@@ -168,6 +170,7 @@ export function parseEnv(input: NodeJS.ProcessEnv | Record<string, unknown>): Ap
     artifactDir: raw.ARTIFACT_DIR,
     encryptionKey: raw.ENCRYPTION_KEY ?? generateEncryptionKey(),
     engineConcurrency: raw.ENGINE_CONCURRENCY,
+    workerHealthPort: raw.WORKER_HEALTH_PORT,
     recheckDelaySeconds: raw.RECHECK_DELAY_SECONDS,
     reopenCooldownMinutes: raw.REOPEN_COOLDOWN_MINUTES,
     productUnavailableAutopause: raw.PRODUCT_UNAVAILABLE_AUTOPAUSE,

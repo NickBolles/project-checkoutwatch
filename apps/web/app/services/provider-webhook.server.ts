@@ -8,6 +8,7 @@ export async function providerWebhook(request: Request, type: ChannelType) {
   if (!adapter) return new Response("Provider is not configured", { status: 503 });
   const body = await request.text();
   const headers = Object.fromEntries(request.headers.entries());
+  headers["x-checkoutwatch-webhook-url"] = request.url;
   const store = new PrismaDeliveryLogStore(runtime.client, "provider-webhook");
   const result = await ingestStatusWebhook(adapter, store, headers, body);
   return Response.json(result, {

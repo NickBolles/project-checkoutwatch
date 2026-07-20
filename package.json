@@ -20,6 +20,7 @@
     "demo:check": "pnpm --filter @checkoutwatch/engine demo --",
     "demo:diagnose": "pnpm --filter @checkoutwatch/worker demo:diagnose --",
     "demo:incident": "pnpm --filter @checkoutwatch/worker demo:incident",
+    "demo": "cross-env PLAYWRIGHT_BROWSERS_PATH=.tools/ms-playwright pnpm demo:incident",
     "dev": "pnpm --filter @checkoutwatch/worker... build && pnpm --parallel --filter @checkoutwatch/storefront-fixture --filter @checkoutwatch/web dev",
     "fixture": "pnpm --filter @checkoutwatch/storefront-fixture start",
     "test:engine": "cross-env PLAYWRIGHT_BROWSERS_PATH=.tools/ms-playwright vitest run --workspace vitest.workspace.ts --project engine",

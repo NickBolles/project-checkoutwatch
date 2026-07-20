@@ -15,7 +15,7 @@ export function createReconcilePlanHandler(client: PrismaClient) {
   return async ({ shopId, previousPlan }: ReconcilePlanPayload) => {
     const shop = await client.shop.findUniqueOrThrow({
       where: { id: shopId },
-      include: { monitors: { orderBy: { createdAt: "desc" } }, channels: true },
+      include: { monitors: { orderBy: { createdAt: "desc" } }, channels: true, statusPage: true },
     });
     const plan = normalizePlan(shop.plan);
     const entitlement = PLAN_ENTITLEMENTS[plan];
@@ -27,6 +27,7 @@ export function createReconcilePlanHandler(client: PrismaClient) {
     const disabledChannels = shop.channels.filter(
       (channel) => channel.enabled && isChannel(channel.type) && !canUseChannel(plan, channel.type),
     );
+    const disableStatusPage = Boolean(shop.statusPage?.enabled && !entitlement.publicStatusPage);
     await client.$transaction(async (transaction) => {
       if (paused.length)
         await transaction.monitor.updateMany({
@@ -43,12 +44,18 @@ export function createReconcilePlanHandler(client: PrismaClient) {
           where: { id: { in: disabledChannels.map((channel) => channel.id) } },
           data: { enabled: false },
         });
+      if (disableStatusPage)
+        await transaction.statusPage.update({
+          where: { shopId: shop.id },
+          data: { enabled: false },
+        });
       const summary = {
         previousPlan: previousPlan ?? null,
         plan,
         pausedMonitors: paused.map((monitor) => ({ id: monitor.id, name: monitor.name })),
         intervalAdjustments: intervalAdjustments.length,
         disabledChannels: disabledChannels.map((channel) => channel.type),
+        statusPageDisabled: disableStatusPage,
         reconciledAt: new Date().toISOString(),
       };
       await transaction.shop.update({
@@ -75,6 +82,15 @@ export function createReconcilePlanHandler(client: PrismaClient) {
           reason: `disabled after downgrade: ${channel.type} is not included in ${plan}`,
           metadataJson: JSON.stringify({ channelId: channel.id }),
         })),
+        ...(disableStatusPage
+          ? [
+              {
+                feature: "public_status_page",
+                reason: `disabled after downgrade: public status pages require Pro`,
+                metadataJson: JSON.stringify({ statusPageId: shop.statusPage?.id }),
+              },
+            ]
+          : []),
       ];
       if (logs.length)
         await transaction.entitlementLog.createMany({

@@ -43,9 +43,20 @@ In real Shopify mode the worker decrypts each installed shop's stored offline ac
 
 Build `apps/web/Dockerfile` for the React Router server and `apps/worker/Dockerfile` for the worker. The worker image is pinned to the Playwright 1.53.1 Jammy image, matching `packages/engine`, so Chromium and its OS libraries stay version-aligned. The web image uses Node 20. Both images generate the PostgreSQL Prisma client during their build.
 
-`docker compose up --build` starts the executable prod-parity topology: PostgreSQL, Redis, the local fixture/control probe, a schema-init service, web, and the Playwright worker. It intentionally uses mock Shopify and alert transports and contains no live credentials. The production webhook verifier rejects mock signatures when `NODE_ENV=production`, even in this credential-free topology.
+`docker-compose.yml` is the credential-free prod-parity topology: it starts PostgreSQL, Redis, the local fixture/control probe, a schema-init service, web, and the Playwright worker with mock Shopify and alert transports. It is for local/CI validation only; its fixture control probe is deliberately invalid for a real deployment.
 
-Set `ARTIFACT_STORE=local` and a persistent shared `ARTIFACT_DIR` only for a single durable worker; multi-replica production requires the planned S3-compatible artifact-store adapter before scaling. Health-check web `/healthz` and worker `/healthz` on `WORKER_HEALTH_PORT`.
+For the Hostinger + Traefik deployment, use the tracked `docker-compose.production.yml` and a VPS-local `.env.production` created from `.env.production.example`:
+
+```sh
+cp .env.production.example .env.production
+chmod 600 .env.production
+# Fill every REPLACE_WITH_* value and set the actual Traefik network/resolver.
+docker compose --env-file .env.production -f docker-compose.production.yml config
+# First deployment only: this initializes the empty Postgres volume with Prisma db push.
+docker compose --env-file .env.production -f docker-compose.production.yml up -d --build
+```
+
+The production topology has no fixture, publishes only the web service through Traefik, keeps Postgres/Redis/worker health private, and uses a shared durable artifact volume for **one** worker. Its `migrate` service invokes `pnpm db:push:postgres`, which is appropriate only while the database is new and disposable; create and apply reviewed Prisma migrations before upgrading an established production database. Multi-replica production requires the planned S3-compatible artifact-store adapter before scaling. Health-check web `/healthz` and worker `/healthz` on `WORKER_HEALTH_PORT`.
 
 Required production variables: `DATABASE_URL`, `REDIS_URL`, `QUEUE_DRIVER=bullmq`, stable shared `QUEUE_PREFIX`, `SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET`, `SHOPIFY_APP_URL`, `SHOPIFY_SCOPES`, `SHOPIFY_AUTH=real`, `ENCRYPTION_KEY`, `CONTROL_PROBE_URL`, provider credentials for enabled real channels, `ALERT_TRANSPORT=real`, and `INLINE_WORKER=0`. `CONTROL_PROBE_URL` must be an independently hosted, known-good HTTPS endpoint; production startup rejects a missing or loopback value. Optional: `ANTHROPIC_API_KEY`, `LLM_MODEL`, interval/debounce tuning, artifact paths, and payment-origin configuration. See `.env.example` for every default and exact spelling.
 

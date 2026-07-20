@@ -1,5 +1,15 @@
 # CheckoutWatch — Phased Implementation Plan
 
+> **Status — 2026-07-20: ✅ All phases implemented, adversarially reviewed, gap-audited, and hardened.**
+> 110 tests pass (+7 Redis-only in CI), the production build passes, and the web + worker Docker images build via `docker compose build`.
+> `main` on GitHub is the source of truth. All BLOCKER/MAJOR gaps in [`GAP_REPORT.md`](./GAP_REPORT.md) are fixed
+> (stable shared queue prefix, prod control-probe, fail-closed webhook HMAC, real worker Shopify admin, CI + Dockerfiles).
+>
+> **Next steps:**
+> - **Deploy & live-test** → [`DEPLOYMENT_HANDOFF.md`](./DEPLOYMENT_HANDOFF.md) — VPS + Traefik + Shopify dev-store runbook. Note the load-bearing prod settings (stable `QUEUE_PREFIX`, non-loopback `CONTROL_PROBE_URL`).
+> - **Remaining backlog** → [`GAP_REPORT.md`](./GAP_REPORT.md) §B: compliance/UX seams; **S3 artifact store** (unblocks multi-worker scale — single worker only until then); agency multi-store (biggest revenue lever); public "Shopify status — actually tested" marketing page.
+> - **Standing risk:** correctness is proven against mocks; expect small live Shopify/Redis shape mismatches on first real deploy.
+
 > Engineer-ready build plan derived from `PLAN.md` / `README.md`. Each phase is self-contained
 > and executable by one coding agent **without any live external credentials**. Every external
 > service sits behind an adapter with a local mock/test double; real creds drop in later via env vars.

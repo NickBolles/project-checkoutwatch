@@ -13,3 +13,7 @@ coverage/
 
 /packages/db/prisma/*.db
 /packages/db/prisma/*.db-journal
+
+# React Router / app build output
+build/
+apps/*/build/

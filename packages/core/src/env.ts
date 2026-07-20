@@ -43,6 +43,8 @@ const rawEnvSchema = z
     ENGINE_CONCURRENCY: z.coerce.number().int().min(1).max(32).default(2),
     INLINE_WORKER: booleanString.default("1"),
     FIXTURE_STOREFRONT_URL: z.string().url().default("http://localhost:4600"),
+    CONTROL_PROBE_URL: z.string().url().default("http://localhost:4602/health"),
+    KNOWN_PAYMENT_ORIGINS: z.string().default("https://checkout.shopifycs.com,https://js.stripe.com,http://localhost:4601"),
   })
   .superRefine((value, context) => {
     if (value.ENCRYPTION_KEY) {
@@ -118,6 +120,8 @@ export interface AppConfig {
   engineConcurrency: number;
   inlineWorker: boolean;
   fixtureStorefrontUrl: string;
+  controlProbeUrl: string;
+  knownPaymentOrigins: readonly string[];
 }
 
 export function parseEnv(input: NodeJS.ProcessEnv | Record<string, unknown>): AppConfig {
@@ -158,6 +162,8 @@ export function parseEnv(input: NodeJS.ProcessEnv | Record<string, unknown>): Ap
     engineConcurrency: raw.ENGINE_CONCURRENCY,
     inlineWorker: raw.INLINE_WORKER,
     fixtureStorefrontUrl: raw.FIXTURE_STOREFRONT_URL,
+    controlProbeUrl: raw.CONTROL_PROBE_URL,
+    knownPaymentOrigins: raw.KNOWN_PAYMENT_ORIGINS.split(",").map((origin) => origin.trim()).filter(Boolean),
   };
 }
 

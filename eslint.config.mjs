@@ -31,8 +31,13 @@ export default tseslint.config(
     },
   },
   {
-    files: ["**/*.test.ts"],
+    files: ["**/*.test.ts", "**/test/**/*.ts"],
     languageOptions: { globals: { ...globals.node, ...globals.vitest } },
+    rules: {
+      "@typescript-eslint/no-unsafe-assignment": "off",
+      "@typescript-eslint/require-await": "off",
+      "@typescript-eslint/unbound-method": "off",
+    },
   },
   eslintConfigPrettier,
 );

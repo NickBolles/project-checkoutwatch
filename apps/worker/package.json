@@ -8,6 +8,14 @@
     "build": "tsc -p tsconfig.build.json",
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
     "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
-  }
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "tsx src/main.ts"
+  },
+  "dependencies": {
+    "@checkoutwatch/core": "workspace:*",
+    "@checkoutwatch/db": "workspace:*",
+    "@checkoutwatch/engine": "workspace:*",
+    "@checkoutwatch/queue": "workspace:*"
+  },
+  "devDependencies": { "@checkoutwatch/storefront-fixture": "workspace:*", "@prisma/client": "6.19.0", "playwright": "1.53.1" }
 }

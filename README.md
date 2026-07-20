@@ -19,6 +19,10 @@ Verified research (July 2026):
 
 ## Kickoff Prompt
 
+## Local browser setup
+
+Install dependencies with `pnpm install`, then install the headless browser with `pnpm browser:install`. Use `pnpm fixture`, `pnpm test:engine`, or `pnpm demo:check -- --mode payment_iframe_missing` for the local fixture and engine.
+
 Paste this into Claude Code from the repo root to start:
 
 ```

@@ -1,2 +1,9 @@
-/** Phase 0 package boundary; delivery ports and adapters arrive in Phase 1. */
-export const ALERTS_PACKAGE = "@checkoutwatch/alerts";
+export * from "./types.js";
+export * from "./dispatcher.js";
+export * from "./status-webhooks.js";
+export * from "./templates.js";
+export * from "./adapters/email-resend.js";
+export * from "./adapters/slack.js";
+export * from "./adapters/discord.js";
+export * from "./adapters/sms-twilio.js";
+export * from "./adapters/mock.js";

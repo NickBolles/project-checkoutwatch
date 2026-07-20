@@ -12,6 +12,8 @@
     "build": "tsc -p tsconfig.build.json",
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
     "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
-  }
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "demo": "tsx src/demo.ts"
+  },
+  "devDependencies": { "@checkoutwatch/webhook-sink": "workspace:*" }
 }

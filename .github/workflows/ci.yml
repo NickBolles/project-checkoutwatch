@@ -26,7 +26,7 @@ jobs:
       - run: pnpm db:generate
       - run: pnpm db:migrate
       - run: pnpm db:seed
-      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm --filter @checkoutwatch/engine exec playwright install --with-deps chromium
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm test

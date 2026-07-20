@@ -33,14 +33,32 @@ export class MemoryDriver implements JobQueue {
     if (existing) return Promise.resolve(existing);
     const id = options.jobId ?? randomUUID();
     if (dedupeKey) this.knownIds.set(dedupeKey, id);
-    this.jobs.push({ id, name, payload, options, attempt: 0, availableAt: Date.now() + (options.delayMs ?? 0), sequence: this.sequence++ });
+    this.jobs.push({
+      id,
+      name,
+      payload,
+      options,
+      attempt: 0,
+      availableAt: Date.now() + (options.delayMs ?? 0),
+      sequence: this.sequence++,
+    });
     this.schedule();
     return Promise.resolve(id);
   }
 
-  process<T>(name: string, handler: JobHandler<T>, options: { concurrency?: number } = {}): Promise<ProcessorHandle> {
-    if (this.processors.has(name)) return Promise.reject(new Error(`processor already registered for ${name}`));
-    const processor: Processor = { handler: handler as JobHandler, concurrency: options.concurrency ?? 1, active: 0, closed: false };
+  process<T>(
+    name: string,
+    handler: JobHandler<T>,
+    options: { concurrency?: number } = {},
+  ): Promise<ProcessorHandle> {
+    if (this.processors.has(name))
+      return Promise.reject(new Error(`processor already registered for ${name}`));
+    const processor: Processor = {
+      handler: handler as JobHandler,
+      concurrency: options.concurrency ?? 1,
+      active: 0,
+      closed: false,
+    };
     this.processors.set(name, processor);
     this.schedule();
     return Promise.resolve({
@@ -50,6 +68,20 @@ export class MemoryDriver implements JobQueue {
         await this.waitForIdle(processor);
       },
     });
+  }
+
+  cancelWhere(predicate: (name: string, payload: unknown) => boolean): Promise<number> {
+    let removed = 0;
+    for (let index = this.jobs.length - 1; index >= 0; index -= 1) {
+      const job = this.jobs[index];
+      if (job && predicate(job.name, job.payload)) {
+        this.jobs.splice(index, 1);
+        if (job.options.jobId) this.knownIds.delete(`${job.name}:${job.options.jobId}`);
+        removed += 1;
+      }
+    }
+    this.schedule();
+    return Promise.resolve(removed);
   }
 
   async close(): Promise<void> {
@@ -88,8 +120,13 @@ export class MemoryDriver implements JobQueue {
       const processor = this.processors.get(job.name);
       return processor && !processor.closed && processor.active < processor.concurrency;
     });
-    const next = schedulable.reduce<number | undefined>((minimum, job) => minimum === undefined ? job.availableAt : Math.min(minimum, job.availableAt), undefined);
-    if (next !== undefined) this.timer = setTimeout(() => this.pump(), Math.max(0, next - Date.now()));
+    const next = schedulable.reduce<number | undefined>(
+      (minimum, job) =>
+        minimum === undefined ? job.availableAt : Math.min(minimum, job.availableAt),
+      undefined,
+    );
+    if (next !== undefined)
+      this.timer = setTimeout(() => this.pump(), Math.max(0, next - Date.now()));
   }
 
   private async execute(job: MemoryJob, processor: Processor): Promise<void> {
@@ -99,7 +136,9 @@ export class MemoryDriver implements JobQueue {
     } catch {
       if (job.attempt < (job.options.attempts ?? 1) && !this.closed) {
         const backoff = job.options.backoff;
-        const delay = backoff ? backoff.delayMs * (backoff.type === "exponential" ? 2 ** (job.attempt - 1) : 1) : 0;
+        const delay = backoff
+          ? backoff.delayMs * (backoff.type === "exponential" ? 2 ** (job.attempt - 1) : 1)
+          : 0;
         job.availableAt = Date.now() + delay;
         job.sequence = this.sequence++;
         this.jobs.push(job);

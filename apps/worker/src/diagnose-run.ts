@@ -30,6 +30,16 @@ export async function diagnoseRun(
     options.allowLlm ??
     ((run.monitor.shop.plan === "growth" || run.monitor.shop.plan === "pro") &&
       PLAN_ENTITLEMENTS[run.monitor.shop.plan].aiDiagnosis);
+  if (!allowLlm && options.allowLlm !== false) {
+    await client.entitlementLog.create({
+      data: {
+        shopId: run.monitor.shopId,
+        feature: "ai_diagnosis",
+        reason: `skipped: AI diagnosis is not included in plan ${run.monitor.shop.plan}`,
+        metadataJson: JSON.stringify({ runId }),
+      },
+    });
+  }
   const context = await new FailureContextBuilder(client).build(runId);
   const diagnoser = createDiagnoser({
     allowLlm,

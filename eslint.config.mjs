@@ -14,10 +14,10 @@ export default tseslint.config(
   },
   ...tseslint.configs.recommendedTypeChecked.map((config) => ({
     ...config,
-    files: ["**/*.ts"],
+    files: ["**/*.{ts,tsx}"],
   })),
   {
-    files: ["**/*.ts"],
+    files: ["**/*.{ts,tsx}"],
     languageOptions: {
       globals: globals.node,
       parserOptions: {
@@ -31,12 +31,20 @@ export default tseslint.config(
     },
   },
   {
-    files: ["**/*.test.ts", "**/test/**/*.ts"],
+    files: ["**/*.test.{ts,tsx}", "**/test/**/*.{ts,tsx}"],
     languageOptions: { globals: { ...globals.node, ...globals.vitest } },
     rules: {
       "@typescript-eslint/no-unsafe-assignment": "off",
       "@typescript-eslint/require-await": "off",
       "@typescript-eslint/unbound-method": "off",
+    },
+  },
+  {
+    files: ["apps/web/**/*.{ts,tsx}"],
+    languageOptions: { globals: { ...globals.node, ...globals.browser } },
+    rules: {
+      // React Router uses thrown Response values for typed HTTP route failures.
+      "@typescript-eslint/only-throw-error": "off",
     },
   },
   eslintConfigPrettier,

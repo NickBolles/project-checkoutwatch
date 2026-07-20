@@ -71,4 +71,5 @@ export interface AlertRoute {
   channel: ChannelType;
   destination: string;
   enabled?: boolean;
+  skipReason?: string;
 }

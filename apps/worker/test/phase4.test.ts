@@ -84,6 +84,11 @@ describe("Phase 4 failure intelligence", () => {
     const diagnosis = await diagnoseRun(client, "failed-run", { provider: "anthropic" });
     expect(diagnosis.provider).toBe("heuristic");
     expect(diagnosis.probableCause).toContain("https://new-app.test");
+    expect(
+      await client.entitlementLog.findFirst({
+        where: { shopId: shop.id, feature: "ai_diagnosis" },
+      }),
+    ).toMatchObject({ action: "skipped", reason: expect.stringContaining("plan free") });
   });
 
   it("emits theme_updated only after the mock theme timestamp changes", async () => {

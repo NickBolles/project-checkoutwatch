@@ -33,11 +33,21 @@ export function createDispatchAlertHandler(
       if (!isChannel(route.channel)) return [];
       const entitled = canUseChannel(normalizePlan(context.plan), route.channel);
       const emailOnly = payload.event === "monitor_attention" && route.channel !== "email";
+      const skipReason = context.uninstalled
+        ? "shop uninstalled; consent withdrawn"
+        : !entitled
+          ? `plan ${normalizePlan(context.plan)} does not include ${route.channel}`
+          : emailOnly
+            ? "monitor attention notifications are email-only"
+            : !route.enabled
+              ? "channel is disabled"
+              : undefined;
       return [
         {
           channel: route.channel,
           destination: route.destination,
-          enabled: route.enabled && entitled && !emailOnly,
+          enabled: route.enabled && entitled && !emailOnly && !context.uninstalled,
+          ...(skipReason ? { skipReason } : {}),
         },
       ];
     });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canUseChannel, clampInterval, maxMonitors } from "../src/plans.js";
+import { canUseChannel, clampInterval, maxMonitors, PLANS } from "../src/plans.js";
 
 describe("plan entitlements", () => {
   it("clamps intervals to the plan floor", () => {
@@ -15,5 +15,17 @@ describe("plan entitlements", () => {
     expect(maxMonitors("free")).toBe(1);
     expect(maxMonitors("growth")).toBe(3);
     expect(maxMonitors("pro")).toBe(10);
+  });
+
+  it("publishes the finalized Free, $19, and $49 billing metadata", () => {
+    expect([
+      PLANS.free.priceMonthlyUsd,
+      PLANS.growth.priceMonthlyUsd,
+      PLANS.pro.priceMonthlyUsd,
+    ]).toEqual([0, 19, 49]);
+    expect(PLANS.growth.trialDays).toBe(14);
+    expect(PLANS.pro.entitlements.channels).toContain("sms");
+    expect(PLANS.free.entitlements.publicStatusPage).toBe(false);
+    expect(PLANS.pro.entitlements.publicStatusPage).toBe(true);
   });
 });

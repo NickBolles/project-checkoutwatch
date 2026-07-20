@@ -14,6 +14,7 @@ model Shop {
   accessToken   String?
   plan          String               @default("free")
   settingsJson  String               @default("{}")
+  reconciliationJson String          @default("{}")
   installedAt   DateTime             @default(now())
   uninstalledAt DateTime?
   monitors      Monitor[]
@@ -22,6 +23,7 @@ model Shop {
   changeEvents  StoreChangeEvent[]
   statusPage    StatusPage?
   subscription  BillingSubscription?
+  entitlementLogs EntitlementLog[]
 }
 
 model Session {
@@ -33,6 +35,15 @@ model Session {
   expires     DateTime?
   accessToken String
   userId      BigInt?
+  firstName   String?
+  lastName    String?
+  email       String?
+  accountOwner Boolean @default(false)
+  locale      String?
+  collaborator Boolean @default(false)
+  emailVerified Boolean @default(false)
+  refreshToken String?
+  refreshTokenExpires DateTime?
 }
 
 model Monitor {
@@ -52,6 +63,7 @@ model Monitor {
   consecutiveFails  Int        @default(0)
   consecutiveErrors Int        @default(0)
   openIncidentId    String?    @unique
+  createdAt         DateTime   @default(now())
   runs              CheckRun[]
   incidents         Incident[]
 
@@ -150,6 +162,20 @@ model BillingSubscription {
   shopifySubscriptionId String?
   status                String
   activatedAt           DateTime?
+  updatedAt             DateTime  @updatedAt
+}
+
+model EntitlementLog {
+  id           String   @id @default(cuid())
+  shopId       String
+  shop         Shop     @relation(fields: [shopId], references: [id])
+  feature      String
+  action       String   @default("skipped")
+  reason       String
+  metadataJson String   @default("{}")
+  createdAt    DateTime @default(now())
+
+  @@index([shopId, createdAt])
 }
 
 model StatusPage {

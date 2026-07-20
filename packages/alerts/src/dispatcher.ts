@@ -30,7 +30,9 @@ export class AlertDispatcher {
     this.adapters = new Map(adapters.map((adapter) => [adapter.type, adapter]));
     this.maxAttempts = options.maxAttempts ?? 3;
     this.baseBackoffMs = options.baseBackoffMs ?? 100;
-    this.sleep = options.sleep ?? ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
+    this.sleep =
+      options.sleep ??
+      ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
   }
 
   async dispatch(message: AlertMessage, routes: readonly AlertRoute[]): Promise<string[]> {
@@ -44,7 +46,9 @@ export class AlertDispatcher {
           status: route.enabled === false ? "skipped" : "queued",
           attempts: 0,
           ...(message.meta ? { meta: message.meta } : {}),
-          ...(route.enabled === false ? { detail: "route is not entitled or disabled" } : {}),
+          ...(route.enabled === false
+            ? { detail: route.skipReason ?? "route is not entitled or disabled" }
+            : {}),
         }),
       ),
     );
@@ -87,7 +91,10 @@ export class AlertDispatcher {
       try {
         result = await adapter.send(destination, message);
       } catch (error) {
-        result = { status: "failed", error: error instanceof Error ? error.message : String(error) };
+        result = {
+          status: "failed",
+          error: error instanceof Error ? error.message : String(error),
+        };
       }
       if (result.status !== "failed") {
         await this.store.transition(id, "sending", result.status, encodeDetail(result));

@@ -34,6 +34,15 @@ const projects = [
       include: ["test/**/*.test.ts"],
     },
   },
+  {
+    test: {
+      name: "web",
+      environment: "node",
+      root: "apps/web",
+      include: ["test/**/*.test.ts", "test/**/*.test.tsx"],
+      fileParallelism: false,
+    },
+  },
 ] as const;
 
 export default defineWorkspace([...projects]);

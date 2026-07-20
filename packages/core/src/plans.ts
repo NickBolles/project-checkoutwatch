@@ -8,6 +8,14 @@ export interface PlanEntitlements {
   readonly publicStatusPage: boolean;
 }
 
+export interface PlanDefinition {
+  readonly name: PlanName;
+  readonly label: string;
+  readonly priceMonthlyUsd: number;
+  readonly trialDays: number;
+  readonly entitlements: PlanEntitlements;
+}
+
 // PLAN_REVIEW minor #1 resolves the source-plan contradiction intentionally:
 // Growth gets email/chat channels; SMS remains Pro-only because it has direct costs/compliance.
 export const PLAN_ENTITLEMENTS = {
@@ -33,6 +41,32 @@ export const PLAN_ENTITLEMENTS = {
     publicStatusPage: true,
   },
 } as const satisfies Record<PlanName, PlanEntitlements>;
+
+export const BILLING_TRIAL_DAYS = 14;
+
+export const PLANS = {
+  free: {
+    name: "free",
+    label: "Free",
+    priceMonthlyUsd: 0,
+    trialDays: 0,
+    entitlements: PLAN_ENTITLEMENTS.free,
+  },
+  growth: {
+    name: "growth",
+    label: "Growth",
+    priceMonthlyUsd: 19,
+    trialDays: BILLING_TRIAL_DAYS,
+    entitlements: PLAN_ENTITLEMENTS.growth,
+  },
+  pro: {
+    name: "pro",
+    label: "Pro",
+    priceMonthlyUsd: 49,
+    trialDays: BILLING_TRIAL_DAYS,
+    entitlements: PLAN_ENTITLEMENTS.pro,
+  },
+} as const satisfies Record<PlanName, PlanDefinition>;
 
 export function clampInterval(plan: PlanName, requestedMinutes: number): number {
   if (!Number.isFinite(requestedMinutes)) {

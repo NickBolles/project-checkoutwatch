@@ -23,6 +23,7 @@ export interface IncidentAlertContext {
   storeUrl: string;
   shopId: string;
   plan: string;
+  uninstalled: boolean;
   diagnosisJson?: string;
   routes: Array<{ channel: string; destination: string; enabled: boolean }>;
 }
@@ -188,6 +189,7 @@ export class PrismaIncidentRepository {
       storeUrl: incident.monitor.shop.storefrontUrl,
       shopId: incident.monitor.shopId,
       plan: incident.monitor.shop.plan,
+      uninstalled: incident.monitor.shop.uninstalledAt !== null,
       ...(incident.diagnosisJson ? { diagnosisJson: incident.diagnosisJson } : {}),
       routes: incident.monitor.shop.channels.map((route) => ({
         channel: route.type,
@@ -210,6 +212,7 @@ export class PrismaIncidentRepository {
       storeUrl: monitor.shop.storefrontUrl,
       shopId: monitor.shopId,
       plan: monitor.shop.plan,
+      uninstalled: monitor.shop.uninstalledAt !== null,
       routes: monitor.shop.channels.map((route) => ({
         channel: route.type,
         destination: route.destination,

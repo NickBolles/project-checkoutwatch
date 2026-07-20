@@ -19,6 +19,7 @@ import {
   type RunCheckPayload,
   type RunCheckRepository,
 } from "./run-check.js";
+import { createReconcilePlanHandler, type ReconcilePlanPayload } from "./reconcile-plan.js";
 
 export interface RegisterJobsOptions {
   client?: PrismaClient;
@@ -80,9 +81,12 @@ export async function registerJobs(
         await diagnose(payload);
       }),
     );
+    const reconcilePlan = createReconcilePlanHandler(options.client);
+    handles.push(await queue.process<ReconcilePlanPayload>("reconcile-plan", reconcilePlan));
   } else {
     handles.push(await queue.process("dispatch-alert", async () => {}));
     handles.push(await queue.process("diagnose-incident", async () => {}));
+    handles.push(await queue.process("reconcile-plan", async () => {}));
   }
   if (options.changePolling) {
     const poll = createPollStoreChangesHandler(

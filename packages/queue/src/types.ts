@@ -13,10 +13,17 @@ export interface JobContext {
 
 export type JobHandler<T = unknown> = (payload: T, context: JobContext) => Promise<void>;
 
-export interface ProcessorHandle { close(): Promise<void> }
+export interface ProcessorHandle {
+  close(): Promise<void>;
+}
 
 export interface JobQueue {
   add<T>(name: string, payload: T, options?: EnqueueOpts): Promise<string>;
-  process<T>(name: string, handler: JobHandler<T>, options?: { concurrency?: number }): Promise<ProcessorHandle>;
+  process<T>(
+    name: string,
+    handler: JobHandler<T>,
+    options?: { concurrency?: number },
+  ): Promise<ProcessorHandle>;
+  cancelWhere(predicate: (name: string, payload: unknown) => boolean): Promise<number>;
   close(): Promise<void>;
 }

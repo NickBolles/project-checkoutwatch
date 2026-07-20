@@ -121,6 +121,9 @@ class RecordingQueue implements JobQueue {
   process<T>(_name: string, _handler: JobHandler<T>): Promise<ProcessorHandle> {
     return Promise.resolve({ close: () => Promise.resolve() });
   }
+  cancelWhere(): Promise<number> {
+    return Promise.resolve(0);
+  }
   close(): Promise<void> {
     return Promise.resolve();
   }

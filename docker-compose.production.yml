@@ -110,6 +110,10 @@ services:
       - artifacts:/app/var/artifacts
     networks:
       - private
+      # Private keeps Redis/Postgres reachable without publishing them; egress is
+      # intentionally non-internal so Playwright, Shopify polling, control probes,
+      # and configured alert providers can reach the public Internet.
+      - egress
 
 volumes:
   postgres-data:
@@ -119,6 +123,7 @@ volumes:
 networks:
   private:
     internal: true
+  egress:
   traefik:
     external: true
     name: ${TRAEFIK_NETWORK}

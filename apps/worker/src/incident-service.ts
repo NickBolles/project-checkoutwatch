@@ -1,5 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
-import { logger } from "@checkoutwatch/core";
+import { logger } from "@checkoutwatch/core/server";
 import { PrismaIncidentRepository } from "@checkoutwatch/db";
 import type { JobQueue } from "@checkoutwatch/queue";
 import { diagnoseRun, type DiagnoseRunOptions } from "./diagnose-run.js";

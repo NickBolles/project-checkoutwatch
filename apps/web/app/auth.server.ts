@@ -8,7 +8,7 @@ import {
 import { getWebRuntime } from "./services/runtime.server.js";
 import { PrismaBillingStore } from "./services/billing-store.server.js";
 import { getShopifyApp } from "./shopify.server.js";
-import { encrypt } from "@checkoutwatch/core";
+import { encrypt } from "@checkoutwatch/core/server";
 
 export interface ShopContext {
   shop: { id: string; domain: string; plan: "free" | "growth" | "pro" };

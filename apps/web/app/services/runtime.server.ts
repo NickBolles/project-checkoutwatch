@@ -6,7 +6,7 @@ import {
   TwilioSmsAdapter,
   type AlertChannelAdapter,
 } from "@checkoutwatch/alerts";
-import { getConfig, type AppConfig } from "@checkoutwatch/core";
+import { getConfig, type AppConfig } from "@checkoutwatch/core/server";
 import {
   createPrismaClient,
   PrismaMonitorRunRepository,

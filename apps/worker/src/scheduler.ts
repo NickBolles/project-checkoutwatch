@@ -1,4 +1,5 @@
-import { clampInterval, logger, type PlanName } from "@checkoutwatch/core";
+import { clampInterval, type PlanName } from "@checkoutwatch/core";
+import { logger } from "@checkoutwatch/core/server";
 import type { JobQueue } from "@checkoutwatch/queue";
 
 export interface SchedulableMonitor {

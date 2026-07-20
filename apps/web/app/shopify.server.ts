@@ -1,7 +1,7 @@
 import { ApiVersion, shopifyApp } from "@shopify/shopify-app-react-router/server";
 import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
 import { prisma } from "@checkoutwatch/db";
-import { getConfig } from "@checkoutwatch/core";
+import { getConfig } from "@checkoutwatch/core/server";
 
 let configured: ReturnType<typeof shopifyApp> | undefined;
 

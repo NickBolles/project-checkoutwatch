@@ -1,4 +1,4 @@
-import { getConfig, logger, type AppConfig } from "@checkoutwatch/core";
+import { getConfig, logger, type AppConfig } from "@checkoutwatch/core/server";
 import {
   DiscordWebhookAdapter,
   MockAdapter,

@@ -1,5 +1,5 @@
 import { createPrismaClient } from "@checkoutwatch/db";
-import { getConfig } from "@checkoutwatch/core";
+import { getConfig } from "@checkoutwatch/core/server";
 import { diagnoseRun } from "./diagnose-run.js";
 
 const runId = process.argv[2];

@@ -21,7 +21,7 @@ import {
 } from "./run-check.js";
 import { createReconcilePlanHandler, type ReconcilePlanPayload } from "./reconcile-plan.js";
 import { createRetentionHandler } from "./retention.js";
-import { logger } from "@checkoutwatch/core";
+import { logger } from "@checkoutwatch/core/server";
 
 export interface RegisterJobsOptions {
   client?: PrismaClient;

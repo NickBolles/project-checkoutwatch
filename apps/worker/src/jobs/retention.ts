@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
-import { logger, type PlanName } from "@checkoutwatch/core";
+import type { PlanName } from "@checkoutwatch/core";
+import { logger } from "@checkoutwatch/core/server";
 import { readdir, rm } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 

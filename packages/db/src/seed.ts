@@ -1,4 +1,4 @@
-import { getConfig, logger } from "@checkoutwatch/core";
+import { getConfig, logger } from "@checkoutwatch/core/server";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createPrismaClient } from "./client.js";

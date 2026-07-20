@@ -1,0 +1,162 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Shop {
+  id            String               @id @default(cuid())
+  shopDomain    String               @unique
+  storefrontUrl String
+  accessToken   String?
+  plan          String               @default("free")
+  settingsJson  String               @default("{}")
+  installedAt   DateTime             @default(now())
+  uninstalledAt DateTime?
+  monitors      Monitor[]
+  channels      AlertChannelConfig[]
+  deliveries    AlertDelivery[]
+  changeEvents  StoreChangeEvent[]
+  statusPage    StatusPage?
+  subscription  BillingSubscription?
+}
+
+model Session {
+  id          String    @id
+  shop        String
+  state       String
+  isOnline    Boolean   @default(false)
+  scope       String?
+  expires     DateTime?
+  accessToken String
+  userId      BigInt?
+}
+
+model Monitor {
+  id                String     @id @default(cuid())
+  shopId            String
+  shop              Shop       @relation(fields: [shopId], references: [id])
+  name              String
+  productHandle     String
+  productTitle      String
+  variantId         String?
+  intervalMinutes   Int        @default(15)
+  enabled           Boolean    @default(true)
+  nextRunAt         DateTime   @default(now())
+  runningAt         DateTime?
+  lastRunAt         DateTime?
+  lastStatus        String?
+  consecutiveFails  Int        @default(0)
+  consecutiveErrors Int        @default(0)
+  openIncidentId    String?    @unique
+  runs              CheckRun[]
+  incidents         Incident[]
+
+  @@index([enabled, nextRunAt])
+  @@index([shopId])
+}
+
+model CheckRun {
+  id                 String    @id @default(cuid())
+  monitorId          String
+  monitor            Monitor   @relation(fields: [monitorId], references: [id])
+  status             String
+  triggeredBy        String    @default("schedule")
+  startedAt          DateTime
+  finishedAt         DateTime?
+  durationMs         Int?
+  stepTimingsJson    String    @default("[]")
+  failureStep        String?
+  failureCode        String?
+  failureMessage     String?
+  screenshotPath     String?
+  consoleJson        String    @default("[]")
+  failedRequestsJson String    @default("[]")
+  scriptOriginsJson  String    @default("[]")
+
+  @@index([monitorId, startedAt])
+}
+
+model Incident {
+  id                String    @id @default(cuid())
+  monitorId         String
+  monitor           Monitor   @relation(fields: [monitorId], references: [id])
+  status            String    @default("open")
+  openedAt          DateTime  @default(now())
+  resolvedAt        DateTime?
+  reopenCount       Int       @default(0)
+  openingRunId      String
+  resolvingRunId    String?
+  failureCode       String
+  diagnosisJson     String?
+  changeContextJson String    @default("[]")
+
+  @@index([monitorId, status])
+}
+
+model AlertChannelConfig {
+  id          String    @id @default(cuid())
+  shopId      String
+  shop        Shop      @relation(fields: [shopId], references: [id])
+  type        String
+  destination String
+  enabled     Boolean   @default(true)
+  verifiedAt  DateTime?
+
+  @@unique([shopId, type, destination])
+}
+
+model AlertDelivery {
+  id                String   @id @default(cuid())
+  shopId            String
+  shop              Shop     @relation(fields: [shopId], references: [id])
+  incidentId        String?
+  messageKey        String
+  event             String
+  channelType       String
+  destination       String
+  status            String
+  providerMessageId String?
+  errorDetail       String?
+  attempts          Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([messageKey, channelType, destination])
+  @@index([shopId, createdAt])
+  @@index([providerMessageId])
+  @@index([incidentId])
+}
+
+model StoreChangeEvent {
+  id         String   @id @default(cuid())
+  shopId     String
+  shop       Shop     @relation(fields: [shopId], references: [id])
+  detectedAt DateTime @default(now())
+  kind       String
+  detailJson String
+
+  @@index([shopId, detectedAt])
+}
+
+model BillingSubscription {
+  id                    String    @id @default(cuid())
+  shopId                String    @unique
+  shop                  Shop      @relation(fields: [shopId], references: [id])
+  plan                  String
+  shopifySubscriptionId String?
+  status                String
+  activatedAt           DateTime?
+}
+
+model StatusPage {
+  id      String  @id @default(cuid())
+  shopId  String  @unique
+  shop    Shop    @relation(fields: [shopId], references: [id])
+  slug    String  @unique
+  title   String
+  enabled Boolean @default(false)
+}

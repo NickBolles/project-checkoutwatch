@@ -1,0 +1,15 @@
+node_modules/
+.pnpm-store/
+dist/
+coverage/
+.env
+.env.*
+!.env.example
+.tools/
+*.tsbuildinfo
+
+/var/*
+!/var/.gitkeep
+
+/packages/db/prisma/*.db
+/packages/db/prisma/*.db-journal

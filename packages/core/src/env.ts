@@ -1,0 +1,177 @@
+import { resolve } from "node:path";
+import { config as loadDotenv } from "dotenv";
+import { z } from "zod";
+import {
+  ensureDevelopmentEncryptionKey,
+  generateEncryptionKey,
+  parseEncryptionKey,
+} from "./crypto.js";
+
+const optionalString = z.preprocess(
+  (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+  z.string().optional(),
+);
+
+const booleanString = z
+  .enum(["0", "1", "false", "true"])
+  .default("0")
+  .transform((value) => value === "1" || value === "true");
+
+const rawEnvSchema = z
+  .object({
+    NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+    DATABASE_URL: z.string().min(1).default("file:./var/dev.db"),
+    REDIS_URL: optionalString,
+    QUEUE_DRIVER: z.enum(["memory", "bullmq"]).optional(),
+    SHOPIFY_API_KEY: optionalString,
+    SHOPIFY_API_SECRET: optionalString,
+    SHOPIFY_APP_URL: z.string().url().default("http://localhost:3000"),
+    SHOPIFY_SCOPES: z.string().min(1).default("read_products,read_themes"),
+    SHOPIFY_AUTH: z.enum(["mock", "real"]).optional(),
+    ANTHROPIC_API_KEY: optionalString,
+    LLM_MODEL: z.string().min(1).default("claude-opus-4-8"),
+    DIAGNOSIS_PROVIDER: z.enum(["heuristic", "anthropic"]).optional(),
+    RESEND_API_KEY: optionalString,
+    RESEND_WEBHOOK_SECRET: optionalString,
+    TWILIO_ACCOUNT_SID: optionalString,
+    TWILIO_AUTH_TOKEN: optionalString,
+    TWILIO_FROM_NUMBER: optionalString,
+    ALERT_TRANSPORT: z.enum(["mock", "real"]).optional(),
+    ARTIFACT_STORE: z.enum(["local", "s3"]).default("local"),
+    ARTIFACT_DIR: z.string().min(1).default("var/artifacts"),
+    ENCRYPTION_KEY: optionalString,
+    ENGINE_CONCURRENCY: z.coerce.number().int().min(1).max(32).default(2),
+    INLINE_WORKER: booleanString.default("1"),
+    FIXTURE_STOREFRONT_URL: z.string().url().default("http://localhost:4600"),
+  })
+  .superRefine((value, context) => {
+    if (value.ENCRYPTION_KEY) {
+      try {
+        parseEncryptionKey(value.ENCRYPTION_KEY);
+      } catch {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["ENCRYPTION_KEY"],
+          message: "must be a base64-encoded 32-byte key",
+        });
+      }
+    } else if (value.NODE_ENV === "production") {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["ENCRYPTION_KEY"],
+        message: "is required in production",
+      });
+    }
+
+    if (value.QUEUE_DRIVER === "bullmq" && !value.REDIS_URL) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["REDIS_URL"],
+        message: "is required when QUEUE_DRIVER=bullmq",
+      });
+    }
+
+    if (value.DIAGNOSIS_PROVIDER === "anthropic" && !value.ANTHROPIC_API_KEY) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["ANTHROPIC_API_KEY"],
+        message: "is required when DIAGNOSIS_PROVIDER=anthropic",
+      });
+    }
+
+    if (value.SHOPIFY_AUTH === "real" && (!value.SHOPIFY_API_KEY || !value.SHOPIFY_API_SECRET)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["SHOPIFY_AUTH"],
+        message: "real auth requires SHOPIFY_API_KEY and SHOPIFY_API_SECRET",
+      });
+    }
+  });
+
+export type QueueDriver = "memory" | "bullmq";
+export type AlertTransport = "mock" | "real";
+export type DiagnosisProvider = "heuristic" | "anthropic";
+export type ShopifyAuth = "mock" | "real";
+
+export interface AppConfig {
+  nodeEnv: "development" | "test" | "production";
+  databaseUrl: string;
+  redisUrl?: string;
+  queueDriver: QueueDriver;
+  shopifyApiKey?: string;
+  shopifyApiSecret?: string;
+  shopifyAppUrl: string;
+  shopifyScopes: readonly string[];
+  shopifyAuth: ShopifyAuth;
+  anthropicApiKey?: string;
+  llmModel: string;
+  diagnosisProvider: DiagnosisProvider;
+  resendApiKey?: string;
+  resendWebhookSecret?: string;
+  twilioAccountSid?: string;
+  twilioAuthToken?: string;
+  twilioFromNumber?: string;
+  alertTransport: AlertTransport;
+  artifactStore: "local" | "s3";
+  artifactDir: string;
+  encryptionKey: string;
+  engineConcurrency: number;
+  inlineWorker: boolean;
+  fixtureStorefrontUrl: string;
+}
+
+export function parseEnv(input: NodeJS.ProcessEnv | Record<string, unknown>): AppConfig {
+  const raw = rawEnvSchema.parse(input);
+  const queueDriver = raw.QUEUE_DRIVER ?? (raw.REDIS_URL ? "bullmq" : "memory");
+  const diagnosisProvider =
+    raw.DIAGNOSIS_PROVIDER ?? (raw.ANTHROPIC_API_KEY ? "anthropic" : "heuristic");
+  const shopifyAuth =
+    raw.SHOPIFY_AUTH ?? (raw.SHOPIFY_API_KEY && raw.SHOPIFY_API_SECRET ? "real" : "mock");
+  const alertTransport =
+    raw.ALERT_TRANSPORT ??
+    (raw.RESEND_API_KEY || (raw.TWILIO_ACCOUNT_SID && raw.TWILIO_AUTH_TOKEN) ? "real" : "mock");
+
+  return {
+    nodeEnv: raw.NODE_ENV,
+    databaseUrl: raw.DATABASE_URL,
+    ...(raw.REDIS_URL ? { redisUrl: raw.REDIS_URL } : {}),
+    queueDriver,
+    ...(raw.SHOPIFY_API_KEY ? { shopifyApiKey: raw.SHOPIFY_API_KEY } : {}),
+    ...(raw.SHOPIFY_API_SECRET ? { shopifyApiSecret: raw.SHOPIFY_API_SECRET } : {}),
+    shopifyAppUrl: raw.SHOPIFY_APP_URL,
+    shopifyScopes: raw.SHOPIFY_SCOPES.split(",")
+      .map((scope) => scope.trim())
+      .filter(Boolean),
+    shopifyAuth,
+    ...(raw.ANTHROPIC_API_KEY ? { anthropicApiKey: raw.ANTHROPIC_API_KEY } : {}),
+    llmModel: raw.LLM_MODEL,
+    diagnosisProvider,
+    ...(raw.RESEND_API_KEY ? { resendApiKey: raw.RESEND_API_KEY } : {}),
+    ...(raw.RESEND_WEBHOOK_SECRET ? { resendWebhookSecret: raw.RESEND_WEBHOOK_SECRET } : {}),
+    ...(raw.TWILIO_ACCOUNT_SID ? { twilioAccountSid: raw.TWILIO_ACCOUNT_SID } : {}),
+    ...(raw.TWILIO_AUTH_TOKEN ? { twilioAuthToken: raw.TWILIO_AUTH_TOKEN } : {}),
+    ...(raw.TWILIO_FROM_NUMBER ? { twilioFromNumber: raw.TWILIO_FROM_NUMBER } : {}),
+    alertTransport,
+    artifactStore: raw.ARTIFACT_STORE,
+    artifactDir: raw.ARTIFACT_DIR,
+    encryptionKey: raw.ENCRYPTION_KEY ?? generateEncryptionKey(),
+    engineConcurrency: raw.ENGINE_CONCURRENCY,
+    inlineWorker: raw.INLINE_WORKER,
+    fixtureStorefrontUrl: raw.FIXTURE_STOREFRONT_URL,
+  };
+}
+
+let cachedConfig: AppConfig | undefined;
+
+export function getConfig(): AppConfig {
+  if (cachedConfig) return cachedConfig;
+
+  const envPath = resolve(process.cwd(), ".env");
+  loadDotenv({ path: envPath });
+  if (!process.env.ENCRYPTION_KEY && process.env.NODE_ENV !== "production") {
+    process.env.ENCRYPTION_KEY = ensureDevelopmentEncryptionKey(envPath);
+  }
+
+  cachedConfig = parseEnv(process.env);
+  return cachedConfig;
+}

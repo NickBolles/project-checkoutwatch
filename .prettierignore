@@ -1,0 +1,14 @@
+.tools/
+.pnpm-store/
+node_modules/
+dist/
+var/
+.env
+.env.example
+packages/db/prisma/
+
+# Preserve reviewed product documents verbatim.
+README.md
+PLAN.md
+IMPLEMENTATION_PLAN.md
+PLAN_REVIEW.md

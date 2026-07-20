@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      PLAYWRIGHT_BROWSERS_PATH: .tools/ms-playwright
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.tools/ms-playwright
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

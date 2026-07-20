@@ -21,6 +21,7 @@
   "dependencies": {
     "@checkoutwatch/alerts": "workspace:*",
     "@checkoutwatch/core": "workspace:*",
+    "@checkoutwatch/shopify": "workspace:*",
     "@prisma/client": "6.19.0",
     "zod": "3.25.67"
   },

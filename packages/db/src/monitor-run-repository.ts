@@ -1,6 +1,7 @@
 import type { PrismaClient } from "@prisma/client";
 import type { PlanName } from "@checkoutwatch/core";
 import { writeJson } from "./json.js";
+import { PrismaStoreChangeRepository } from "./store-change-repository.js";
 
 export interface PersistableCheckRun {
   runId: string;
@@ -39,14 +40,21 @@ export class PrismaMonitorRunRepository {
     const rows = await this.client.monitor.findMany({
       where: { enabled: true, nextRunAt: { lte: now } },
       include: { shop: { select: { plan: true } } },
-      orderBy: { nextRunAt: "asc" }, take: limit,
+      orderBy: { nextRunAt: "asc" },
+      take: limit,
     });
-    return rows.map((row) => ({ id: row.id, nextRunAt: row.nextRunAt, intervalMinutes: row.intervalMinutes, plan: normalizePlan(row.shop.plan) }));
+    return rows.map((row) => ({
+      id: row.id,
+      nextRunAt: row.nextRunAt,
+      intervalMinutes: row.intervalMinutes,
+      plan: normalizePlan(row.shop.plan),
+    }));
   }
 
   async claimSchedule(id: string, seenNextRunAt: Date, nextRunAt: Date): Promise<boolean> {
     const result = await this.client.monitor.updateMany({
-      where: { id, enabled: true, nextRunAt: seenNextRunAt }, data: { nextRunAt },
+      where: { id, enabled: true, nextRunAt: seenNextRunAt },
+      data: { nextRunAt },
     });
     return result.count === 1;
   }
@@ -55,17 +63,30 @@ export class PrismaMonitorRunRepository {
     return (await this.client.checkRun.count({ where: { triggeredBy: jobKey } })) > 0;
   }
 
-  async acquireRunLock(monitorId: string, now: Date, staleBefore: Date): Promise<RunnableMonitor | null> {
+  async acquireRunLock(
+    monitorId: string,
+    now: Date,
+    staleBefore: Date,
+  ): Promise<RunnableMonitor | null> {
     const claimed = await this.client.monitor.updateMany({
-      where: { id: monitorId, enabled: true, OR: [{ runningAt: null }, { runningAt: { lt: staleBefore } }] },
+      where: {
+        id: monitorId,
+        enabled: true,
+        OR: [{ runningAt: null }, { runningAt: { lt: staleBefore } }],
+      },
       data: { runningAt: now },
     });
     if (claimed.count !== 1) return null;
-    const monitor = await this.client.monitor.findUnique({ where: { id: monitorId }, include: { shop: { select: { storefrontUrl: true } } } });
+    const monitor = await this.client.monitor.findUnique({
+      where: { id: monitorId },
+      include: { shop: { select: { storefrontUrl: true } } },
+    });
     if (!monitor) return null;
     return {
-      id: monitor.id, productHandle: monitor.productHandle,
-      ...(monitor.variantId ? { variantId: monitor.variantId } : {}), storefrontUrl: monitor.shop.storefrontUrl,
+      id: monitor.id,
+      productHandle: monitor.productHandle,
+      ...(monitor.variantId ? { variantId: monitor.variantId } : {}),
+      storefrontUrl: monitor.shop.storefrontUrl,
     };
   }
 
@@ -74,31 +95,53 @@ export class PrismaMonitorRunRepository {
       if (await transaction.checkRun.count({ where: { triggeredBy: jobKey } })) return;
       await transaction.checkRun.create({
         data: {
-          id: result.runId, monitorId, status: result.status, triggeredBy: jobKey,
-          startedAt: new Date(result.startedAt), finishedAt: new Date(result.finishedAt), durationMs: result.durationMs,
-          stepTimingsJson: writeJson(result.steps.map((step) => ({ step: step.name, ms: step.durationMs, ...(step.httpStatus === undefined ? {} : { httpStatus: step.httpStatus }) }))),
+          id: result.runId,
+          monitorId,
+          status: result.status,
+          triggeredBy: jobKey,
+          startedAt: new Date(result.startedAt),
+          finishedAt: new Date(result.finishedAt),
+          durationMs: result.durationMs,
+          stepTimingsJson: writeJson(
+            result.steps.map((step) => ({
+              step: step.name,
+              ms: step.durationMs,
+              ...(step.httpStatus === undefined ? {} : { httpStatus: step.httpStatus }),
+            })),
+          ),
           ...(result.failureStep ? { failureStep: result.failureStep } : {}),
           ...(result.failureCode ? { failureCode: result.failureCode } : {}),
           ...(result.failureMessage ? { failureMessage: result.failureMessage } : {}),
           ...(result.screenshotPath ? { screenshotPath: result.screenshotPath } : {}),
-          consoleJson: writeJson(result.console.map((entry) => ({ level: entry.type === "warning" ? "warn" : "error", text: entry.text }))),
-          failedRequestsJson: writeJson(result.failedRequests), scriptOriginsJson: writeJson(result.scriptOrigins),
+          consoleJson: writeJson(
+            result.console.map((entry) => ({
+              level: entry.type === "warning" ? "warn" : "error",
+              text: entry.text,
+            })),
+          ),
+          failedRequestsJson: writeJson(result.failedRequests),
+          scriptOriginsJson: writeJson(result.scriptOrigins),
         },
       });
       await transaction.monitor.update({
         where: { id: monitorId },
         data: {
-          lastRunAt: new Date(result.finishedAt), lastStatus: result.status,
-          ...(result.status === "passed" ? { consecutiveFails: 0, consecutiveErrors: 0 } : {}),
-          ...(result.status === "failed" ? { consecutiveFails: { increment: 1 }, consecutiveErrors: 0 } : {}),
-          ...(result.status === "error" ? { consecutiveErrors: { increment: 1 } } : {}),
+          lastRunAt: new Date(result.finishedAt),
+          lastStatus: result.status,
         },
       });
     });
   }
 
   async clearRunLock(monitorId: string, acquiredAt: Date): Promise<void> {
-    await this.client.monitor.updateMany({ where: { id: monitorId, runningAt: acquiredAt }, data: { runningAt: null } });
+    await this.client.monitor.updateMany({
+      where: { id: monitorId, runningAt: acquiredAt },
+      data: { runningAt: null },
+    });
+  }
+
+  async recordScriptOriginDiff(runId: string): Promise<void> {
+    await new PrismaStoreChangeRepository(this.client).recordScriptOriginDiff(runId);
   }
 }
 

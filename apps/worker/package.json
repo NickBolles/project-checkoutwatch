@@ -9,13 +9,23 @@
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "start": "tsx src/main.ts"
+    "start": "tsx src/main.ts",
+    "demo:diagnose": "tsx src/demo-diagnose.ts",
+    "demo:incident": "tsx src/demo-incident.ts"
   },
   "dependencies": {
     "@checkoutwatch/core": "workspace:*",
     "@checkoutwatch/db": "workspace:*",
+    "@checkoutwatch/diagnosis": "workspace:*",
     "@checkoutwatch/engine": "workspace:*",
-    "@checkoutwatch/queue": "workspace:*"
+    "@checkoutwatch/queue": "workspace:*",
+    "@checkoutwatch/shopify": "workspace:*",
+    "@checkoutwatch/alerts": "workspace:*"
   },
-  "devDependencies": { "@checkoutwatch/storefront-fixture": "workspace:*", "@prisma/client": "6.19.0", "playwright": "1.53.1" }
+  "devDependencies": {
+    "@checkoutwatch/storefront-fixture": "workspace:*",
+    "@checkoutwatch/webhook-sink": "workspace:*",
+    "@prisma/client": "6.19.0",
+    "playwright": "1.53.1"
+  }
 }

@@ -54,7 +54,8 @@ export class PrismaDeliveryLogStore implements DeliveryLogStore, ProviderDeliver
           where: { id: row.id, status: "queued" },
           data: { status: "sending", attempts: { increment: 1 } },
         });
-        if (result.count === 1) claimed.push(toEntry({ ...row, status: "sending", attempts: row.attempts + 1 }));
+        if (result.count === 1)
+          claimed.push(toEntry({ ...row, status: "sending", attempts: row.attempts + 1 }));
       }
       return claimed;
     });
@@ -86,7 +87,9 @@ export class PrismaDeliveryLogStore implements DeliveryLogStore, ProviderDeliver
     });
   }
 
-  async findByProviderMessageId(providerMessageId: string): Promise<{ id: string; status: DeliveryStatus } | null> {
+  async findByProviderMessageId(
+    providerMessageId: string,
+  ): Promise<{ id: string; status: DeliveryStatus } | null> {
     const row = await this.client.alertDelivery.findFirst({
       where: { providerMessageId },
       select: { id: true, status: true },
@@ -130,7 +133,9 @@ function parseTransitionDetail(detail?: string): { providerMessageId?: string; e
     if (typeof value !== "object" || value === null) return { error: detail };
     const record = value as Record<string, unknown>;
     return {
-      ...(typeof record.providerMessageId === "string" ? { providerMessageId: record.providerMessageId } : {}),
+      ...(typeof record.providerMessageId === "string"
+        ? { providerMessageId: record.providerMessageId }
+        : {}),
       ...(typeof record.error === "string" ? { error: record.error } : {}),
     };
   } catch {

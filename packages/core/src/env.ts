@@ -41,10 +41,15 @@ const rawEnvSchema = z
     ARTIFACT_DIR: z.string().min(1).default("var/artifacts"),
     ENCRYPTION_KEY: optionalString,
     ENGINE_CONCURRENCY: z.coerce.number().int().min(1).max(32).default(2),
+    RECHECK_DELAY_SECONDS: z.coerce.number().int().min(0).default(90),
+    REOPEN_COOLDOWN_MINUTES: z.coerce.number().int().min(0).default(30),
+    PRODUCT_UNAVAILABLE_AUTOPAUSE: z.coerce.number().int().min(2).default(6),
     INLINE_WORKER: booleanString.default("1"),
     FIXTURE_STOREFRONT_URL: z.string().url().default("http://localhost:4600"),
     CONTROL_PROBE_URL: z.string().url().default("http://localhost:4602/health"),
-    KNOWN_PAYMENT_ORIGINS: z.string().default("https://checkout.shopifycs.com,https://js.stripe.com,http://localhost:4601"),
+    KNOWN_PAYMENT_ORIGINS: z
+      .string()
+      .default("https://checkout.shopifycs.com,https://js.stripe.com,http://localhost:4601"),
   })
   .superRefine((value, context) => {
     if (value.ENCRYPTION_KEY) {
@@ -118,6 +123,9 @@ export interface AppConfig {
   artifactDir: string;
   encryptionKey: string;
   engineConcurrency: number;
+  recheckDelaySeconds: number;
+  reopenCooldownMinutes: number;
+  productUnavailableAutopause: number;
   inlineWorker: boolean;
   fixtureStorefrontUrl: string;
   controlProbeUrl: string;
@@ -160,10 +168,15 @@ export function parseEnv(input: NodeJS.ProcessEnv | Record<string, unknown>): Ap
     artifactDir: raw.ARTIFACT_DIR,
     encryptionKey: raw.ENCRYPTION_KEY ?? generateEncryptionKey(),
     engineConcurrency: raw.ENGINE_CONCURRENCY,
+    recheckDelaySeconds: raw.RECHECK_DELAY_SECONDS,
+    reopenCooldownMinutes: raw.REOPEN_COOLDOWN_MINUTES,
+    productUnavailableAutopause: raw.PRODUCT_UNAVAILABLE_AUTOPAUSE,
     inlineWorker: raw.INLINE_WORKER,
     fixtureStorefrontUrl: raw.FIXTURE_STOREFRONT_URL,
     controlProbeUrl: raw.CONTROL_PROBE_URL,
-    knownPaymentOrigins: raw.KNOWN_PAYMENT_ORIGINS.split(",").map((origin) => origin.trim()).filter(Boolean),
+    knownPaymentOrigins: raw.KNOWN_PAYMENT_ORIGINS.split(",")
+      .map((origin) => origin.trim())
+      .filter(Boolean),
   };
 }
 

@@ -1,12 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { MemoryDriver } from "@checkoutwatch/queue";
-import { MonitorScheduler, type SchedulableMonitor, type SchedulerRepository } from "../src/scheduler.js";
+import {
+  MonitorScheduler,
+  type SchedulableMonitor,
+  type SchedulerRepository,
+} from "../src/scheduler.js";
 
 class FakeSchedulerRepository implements SchedulerRepository {
   claimed = new Set<string>();
   advances: Date[] = [];
   constructor(readonly monitors: SchedulableMonitor[]) {}
-  dueMonitors(now: Date) { return Promise.resolve(this.monitors.filter((monitor) => monitor.nextRunAt <= now)); }
+  dueMonitors(now: Date) {
+    return Promise.resolve(this.monitors.filter((monitor) => monitor.nextRunAt <= now));
+  }
   claimSchedule(id: string, seen: Date, next: Date) {
     const key = `${id}:${seen.getTime()}`;
     if (this.claimed.has(key)) return Promise.resolve(false);
@@ -31,7 +37,9 @@ describe("MonitorScheduler", () => {
 
   it("clamps intervals by plan", async () => {
     const now = new Date("2026-07-20T12:00:00Z");
-    const repository = new FakeSchedulerRepository([{ id: "m", nextRunAt: now, intervalMinutes: 1, plan: "growth" }]);
+    const repository = new FakeSchedulerRepository([
+      { id: "m", nextRunAt: now, intervalMinutes: 1, plan: "growth" },
+    ]);
     const queue = new MemoryDriver();
     await new MonitorScheduler(repository, queue).tick(now);
     expect(repository.advances[0]?.getTime()).toBe(now.getTime() + 10 * 60_000);
@@ -40,12 +48,18 @@ describe("MonitorScheduler", () => {
 
   it("two concurrent ticks atomically claim and enqueue once", async () => {
     const now = new Date("2026-07-20T12:00:00Z");
-    const repository = new FakeSchedulerRepository([{ id: "m", nextRunAt: now, intervalMinutes: 60, plan: "free" }]);
+    const repository = new FakeSchedulerRepository([
+      { id: "m", nextRunAt: now, intervalMinutes: 60, plan: "free" },
+    ]);
     const queue = new MemoryDriver();
     let received = 0;
-    await queue.process("run-check", async () => { received += 1; });
+    await queue.process("run-check", async () => {
+      received += 1;
+    });
     const scheduler = new MonitorScheduler(repository, queue);
-    expect((await Promise.all([scheduler.tick(now), scheduler.tick(now)]))).toEqual(expect.arrayContaining([0, 1]));
+    expect(await Promise.all([scheduler.tick(now), scheduler.tick(now)])).toEqual(
+      expect.arrayContaining([0, 1]),
+    );
     await eventually(() => received === 1);
     expect(received).toBe(1);
     await queue.close();

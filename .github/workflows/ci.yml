@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      PLAYWRIGHT_BROWSERS_PATH: .tools/ms-playwright
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.tools/ms-playwright
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -26,7 +26,7 @@ jobs:
       - run: pnpm db:generate
       - run: pnpm db:migrate
       - run: pnpm db:seed
-      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm --filter @checkoutwatch/engine exec playwright install --with-deps chromium
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm test

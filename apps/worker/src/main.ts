@@ -128,10 +128,7 @@ function alertAdapters(config: AppConfig): AlertChannelAdapter[] {
   return adapters;
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === new URL(`file:///${process.argv[1].replaceAll("\\", "/")}`).href
-) {
+if (process.env.RUN_WORKER === "1") {
   const worker = await startWorker();
   const shutdown = () => void worker.close().finally(() => process.exit());
   process.once("SIGINT", shutdown);

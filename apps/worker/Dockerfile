@@ -29,6 +29,7 @@ FROM mcr.microsoft.com/playwright:v1.53.1-jammy AS runtime
 
 ENV NODE_ENV=production
 ENV INLINE_WORKER=0
+ENV RUN_WORKER=1
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
 ENV COREPACK_HOME=/corepack
@@ -40,4 +41,4 @@ COPY --from=build --chown=pwuser:pwuser /app /app
 RUN mkdir -p /app/var/artifacts && chmod 0777 /app/var/artifacts
 USER pwuser
 EXPOSE 3001
-CMD ["node", "apps/worker/dist/main.js"]
+CMD ["pnpm", "--filter", "@checkoutwatch/worker", "start"]

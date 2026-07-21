@@ -40,4 +40,4 @@ COPY --from=build --chown=pwuser:pwuser /app /app
 RUN mkdir -p /app/var/artifacts && chmod 0777 /app/var/artifacts
 USER pwuser
 EXPOSE 3001
-CMD ["pnpm", "--filter", "@checkoutwatch/worker", "start"]
+CMD ["node", "apps/worker/dist/main.js"]

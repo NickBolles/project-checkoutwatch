@@ -6,6 +6,6 @@ export default defineConfig({
   ssr: {
     // Playwright's CommonJS dependency tree depends on __dirname.  Keep it in
     // node_modules so the ESM server bundle does not execute a transformed copy.
-    external: ["playwright", "playwright-core", "chromium-bidi"],
+    external: ["playwright"],
   },
 });

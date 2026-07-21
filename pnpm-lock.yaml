@@ -89,6 +89,9 @@ importers:
       isbot:
         specifier: 5.1.30
         version: 5.1.30
+      playwright:
+        specifier: 1.53.1
+        version: 1.53.1
       react:
         specifier: 18.3.1
         version: 18.3.1

@@ -2,6 +2,7 @@ FROM node:20-bookworm-slim AS build
 
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
+ENV COREPACK_HOME=/corepack
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@10.13.1 --activate
 
@@ -29,8 +30,10 @@ ENV NODE_ENV=production
 ENV INLINE_WORKER=0
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
+ENV COREPACK_HOME=/corepack
 WORKDIR /app
-RUN corepack enable && corepack prepare pnpm@10.13.1 --activate
+RUN corepack enable
+COPY --from=build --chown=node:node /corepack /corepack
 COPY --from=build --chown=node:node /app /app
 RUN mkdir -p /app/var/artifacts && chmod 0777 /app/var/artifacts
 USER node

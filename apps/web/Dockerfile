@@ -2,6 +2,8 @@ FROM node:20-bookworm-slim AS build
 
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
+# Keep the Corepack package-manager cache at a root-readable path shared by build and runtime users.
+ENV COREPACK_HOME=/corepack
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@10.13.1 --activate
 
@@ -29,6 +31,8 @@ ENV NODE_ENV=production
 ENV INLINE_WORKER=0
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
+# Keep the Corepack package-manager cache at a root-readable path shared by build and runtime users.
+ENV COREPACK_HOME=/corepack
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@10.13.1 --activate
 COPY --from=build --chown=node:node /app /app

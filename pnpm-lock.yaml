@@ -83,9 +83,15 @@ importers:
       '@shopify/shopify-app-session-storage-prisma':
         specifier: 9.0.1
         version: 9.0.1(@prisma/client@6.19.0(prisma@6.19.0(typescript@5.8.3))(typescript@5.8.3))(@shopify/shopify-api@13.1.0)(@shopify/shopify-app-session-storage@5.0.1(@shopify/shopify-api@13.1.0))(prisma@6.19.0(typescript@5.8.3))
+      chromium-bidi:
+        specifier: 0.6.0
+        version: 0.6.0(devtools-protocol@0.0.1663043)
       isbot:
         specifier: 5.1.30
         version: 5.1.30
+      playwright:
+        specifier: 1.53.1
+        version: 1.53.1
       react:
         specifier: 18.3.1
         version: 18.3.1

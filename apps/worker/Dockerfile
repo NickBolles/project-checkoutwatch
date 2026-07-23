@@ -2,6 +2,8 @@ FROM mcr.microsoft.com/playwright:v1.53.1-jammy AS build
 
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
+# Keep the Corepack package-manager cache at a root-readable path shared by build and runtime users.
+ENV COREPACK_HOME=/corepack
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@10.13.1 --activate
@@ -30,6 +32,8 @@ ENV NODE_ENV=production
 ENV INLINE_WORKER=0
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
+# Keep the Corepack package-manager cache at a root-readable path shared by build and runtime users.
+ENV COREPACK_HOME=/corepack
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@10.13.1 --activate

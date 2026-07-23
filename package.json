@@ -33,7 +33,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint . --max-warnings 0",
-    "test": "cross-env PLAYWRIGHT_BROWSERS_PATH=.tools/ms-playwright vitest run --workspace vitest.workspace.ts",
+    "test": "cross-env PLAYWRIGHT_BROWSERS_PATH=.tools/ms-playwright vitest run --workspace vitest.workspace.ts --maxWorkers=1 --no-file-parallelism --retry=2",
     "typecheck": "pnpm -r typecheck"
   },
   "devDependencies": {

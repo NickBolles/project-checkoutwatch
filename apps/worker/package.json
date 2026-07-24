@@ -13,7 +13,7 @@
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "start": "tsx src/main.ts",
+    "start": "cross-env RUN_WORKER=1 tsx src/main.ts",
     "demo:diagnose": "tsx src/demo-diagnose.ts",
     "demo:incident": "tsx src/demo-incident.ts"
   },

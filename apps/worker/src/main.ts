@@ -128,10 +128,9 @@ function alertAdapters(config: AppConfig): AlertChannelAdapter[] {
   return adapters;
 }
 
-if (
-  process.argv[1] &&
-  import.meta.url === new URL(`file:///${process.argv[1].replaceAll("\\", "/")}`).href
-) {
+// The worker is also imported by tests and tooling. Its runtime image explicitly
+// enables this entry point so those imports do not start a long-lived process.
+if (process.env.RUN_WORKER === "1") {
   const worker = await startWorker();
   const shutdown = () => void worker.close().finally(() => process.exit());
   process.once("SIGINT", shutdown);

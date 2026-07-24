@@ -30,6 +30,8 @@ FROM mcr.microsoft.com/playwright:v1.53.1-jammy AS runtime
 
 ENV NODE_ENV=production
 ENV INLINE_WORKER=0
+# Opt in only in the worker image; imports in tests/tooling must not start it.
+ENV RUN_WORKER=1
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
 # Keep the Corepack package-manager cache at a root-readable path shared by build and runtime users.

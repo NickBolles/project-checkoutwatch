@@ -1,10 +1,27 @@
 import { Frame, Navigation } from "@shopify/polaris";
-import { Outlet, useLocation, useNavigate } from "react-router";
+import { AppProvider as ShopifyAppProvider } from "@shopify/shopify-app-react-router/react";
+import { boundary } from "@shopify/shopify-app-react-router/server";
+import type { HeadersFunction } from "react-router";
+import { Outlet, useLoaderData, useLocation, useNavigate, useRouteError } from "react-router";
+import { getConfig } from "@checkoutwatch/core/server";
+import { getShopifyApp } from "../shopify.server.js";
+
+export async function loader({ request }: { request: Request }) {
+  const config = getConfig();
+  if (config.shopifyAuth === "real") {
+    await getShopifyApp().authenticate.admin(request);
+  }
+  return {
+    apiKey: config.shopifyApiKey ?? "",
+    authMode: config.shopifyAuth,
+  };
+}
 
 export default function AppLayout() {
+  const data = useLoaderData<typeof loader>();
   const location = useLocation();
   const navigate = useNavigate();
-  return (
+  const content = (
     <Frame
       navigation={
         <Navigation location={location.pathname}>
@@ -43,4 +60,13 @@ export default function AppLayout() {
       <Outlet />
     </Frame>
   );
+
+  if (data.authMode !== "real") return content;
+  return <ShopifyAppProvider embedded apiKey={data.apiKey}>{content}</ShopifyAppProvider>;
 }
+
+export function ErrorBoundary() {
+  return boundary.error(useRouteError());
+}
+
+export const headers: HeadersFunction = (headersArgs) => boundary.headers(headersArgs);

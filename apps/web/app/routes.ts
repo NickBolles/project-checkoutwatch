@@ -14,6 +14,7 @@ export default [
   route("artifacts/:runId/:file", "routes/artifacts.$runId.$file.ts"),
   route("status/:slug", "routes/status.$slug.tsx"),
   route("healthz", "routes/healthz.ts"),
+  route("auth/*", "routes/auth.$.ts"),
   route("webhooks/app/uninstalled", "routes/webhooks.app_uninstalled.ts"),
   route("webhooks/customers/data_request", "routes/webhooks.customers_data_request.ts"),
   route("webhooks/customers/redact", "routes/webhooks.customers_redact.ts"),

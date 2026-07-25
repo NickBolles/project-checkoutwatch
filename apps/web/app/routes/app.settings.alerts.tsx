@@ -9,7 +9,7 @@ import {
   Select,
   TextField,
 } from "@shopify/polaris";
-import { Form, useLoaderData } from "react-router";
+import { Form, useLoaderData, useNavigate } from "react-router";
 import { useState } from "react";
 import { PLAN_ENTITLEMENTS, type ChannelType } from "@checkoutwatch/core";
 import { requestContext } from "../services/request.server.js";
@@ -35,13 +35,14 @@ export async function action({ request }: { request: Request }) {
 }
 
 export function AlertSettingsPage({ data }: { data: Awaited<ReturnType<typeof loader>> }) {
+  const navigate = useNavigate();
   const allowed = PLAN_ENTITLEMENTS[data.plan].channels as readonly ChannelType[];
   const [channel, setChannel] = useState<ChannelType>(allowed[0] ?? "email");
   const [destination, setDestination] = useState("");
   return (
     <Page
       title="Alert settings"
-      backAction={{ content: "Dashboard", url: "/" }}
+      backAction={{ content: "Dashboard", onAction: () => void navigate("/") }}
       primaryAction={{
         content: "Test my alerts",
         onAction: () =>

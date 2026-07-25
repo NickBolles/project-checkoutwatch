@@ -1,6 +1,6 @@
 import { Banner, BlockStack, Card, FormLayout, Page, Select, Text } from "@shopify/polaris";
 import { useState } from "react";
-import { Form, redirect, useLoaderData } from "react-router";
+import { Form, redirect, useLoaderData, useNavigate } from "react-router";
 import { PLAN_ENTITLEMENTS } from "@checkoutwatch/core";
 import { requestContext } from "../services/request.server.js";
 import { formString } from "../services/form.server.js";
@@ -36,11 +36,12 @@ export async function action({ request }: { request: Request }) {
 }
 
 export function MonitorWizardPage({ data }: { data: Awaited<ReturnType<typeof loader>> }) {
+  const navigate = useNavigate();
   const [productHandle, setProductHandle] = useState(data.products[0]?.handle ?? "");
   const intervals = [5, 10, 15, 30, 60].filter((minutes) => minutes >= data.minimumInterval);
   const [interval, setIntervalValue] = useState(String(intervals[0] ?? data.minimumInterval));
   return (
-    <Page title="Create a checkout monitor" backAction={{ content: "Dashboard", url: "/" }}>
+    <Page title="Create a checkout monitor" backAction={{ content: "Dashboard", onAction: () => void navigate("/") }}>
       <BlockStack gap="400">
         <Banner title="No code required">
           <p>

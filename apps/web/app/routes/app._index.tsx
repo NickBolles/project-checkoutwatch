@@ -9,7 +9,7 @@ import {
   Page,
   Text,
 } from "@shopify/polaris";
-import { Link, useLoaderData } from "react-router";
+import { Link, useLoaderData, useNavigate } from "react-router";
 import { Sparkline } from "../components/sparkline.js";
 import { requestContext } from "../services/request.server.js";
 
@@ -24,10 +24,11 @@ export async function loader({ request }: { request: Request }) {
 type DashboardData = Awaited<ReturnType<typeof loader>>;
 
 export function DashboardPage({ data }: { data: DashboardData }) {
+  const navigate = useNavigate();
   return (
     <Page
       title="Checkout status"
-      primaryAction={{ content: "Set up a monitor", url: "/monitors/new" }}
+      primaryAction={{ content: "Set up a monitor", onAction: () => void navigate("/monitors/new") }}
     >
       {Array.isArray(data.reconciliation.pausedMonitors) &&
       data.reconciliation.pausedMonitors.length > 0 ? (
@@ -39,7 +40,7 @@ export function DashboardPage({ data }: { data: DashboardData }) {
         <Card>
           <EmptyState
             heading="Test your checkout automatically"
-            action={{ content: "Pick a product", url: "/monitors/new" }}
+            action={{ content: "Pick a product", onAction: () => void navigate("/monitors/new") }}
             image=""
           >
             <p>
@@ -49,13 +50,16 @@ export function DashboardPage({ data }: { data: DashboardData }) {
         </Card>
       ) : (
         <BlockStack gap="400">
-          {data.monitors.map((monitor) => (
-            <Card key={monitor.id}>
+          {data.monitors.map((monitor) => {
+            const openIncident = monitor.openIncident;
+            const latestIncident = monitor.incidents[0];
+            return (
+              <Card key={monitor.id}>
               <BlockStack gap="300">
-                {monitor.openIncident ? (
+                {openIncident ? (
                   <Banner tone="critical" title="Checkout incident in progress">
-                    <p>{monitor.openIncident.failureCode}</p>
-                    <Button url={`/incidents/${monitor.openIncident.id}`}>View incident</Button>
+                    <p>{openIncident.failureCode}</p>
+                    <Button onClick={() => void navigate(`/incidents/${openIncident.id}`)}>View incident</Button>
                   </Banner>
                 ) : null}
                 <InlineStack align="space-between" blockAlign="center">
@@ -83,9 +87,9 @@ export function DashboardPage({ data }: { data: DashboardData }) {
                   />
                 </InlineStack>
                 <InlineStack gap="300">
-                  <Button url={`/monitors/${monitor.id}`}>Run history</Button>
-                  {monitor.incidents[0] ? (
-                    <Button url={`/incidents/${monitor.incidents[0].id}`}>Latest incident</Button>
+                  <Button onClick={() => void navigate(`/monitors/${monitor.id}`)}>Run history</Button>
+                  {latestIncident ? (
+                    <Button onClick={() => void navigate(`/incidents/${latestIncident.id}`)}>Latest incident</Button>
                   ) : null}
                 </InlineStack>
                 {monitor.incidents.length > 0 ? (
@@ -102,8 +106,9 @@ export function DashboardPage({ data }: { data: DashboardData }) {
                   </BlockStack>
                 ) : null}
               </BlockStack>
-            </Card>
-          ))}
+              </Card>
+            );
+          })}
         </BlockStack>
       )}
     </Page>

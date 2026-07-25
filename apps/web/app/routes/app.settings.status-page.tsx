@@ -9,7 +9,7 @@ import {
   Text,
   TextField,
 } from "@shopify/polaris";
-import { Form, useLoaderData } from "react-router";
+import { Form, useLoaderData, useNavigate } from "react-router";
 import { useState } from "react";
 import { formBoolean, formString } from "../services/form.server.js";
 import { requestContext } from "../services/request.server.js";
@@ -31,16 +31,17 @@ export async function action({ request }: { request: Request }) {
 }
 
 export function StatusPageSettings({ data }: { data: Awaited<ReturnType<typeof loader>> }) {
+  const navigate = useNavigate();
   const [slug, setSlug] = useState(data.page?.slug ?? "dev-shop");
   const [title, setTitle] = useState(data.page?.title ?? "Checkout status");
   const [enabled, setEnabled] = useState(data.page?.enabled ?? false);
   return (
-    <Page title="Public status page" backAction={{ content: "Settings", url: "/settings" }}>
+    <Page title="Public status page" backAction={{ content: "Settings", onAction: () => void navigate("/settings") }}>
       <BlockStack gap="400">
         {!data.entitled ? (
           <Banner title="Public status pages are available on Pro" tone="info">
             <p>Upgrade to publish checkout uptime and sanitized incident history.</p>
-            <Button url="/billing">View Pro plan</Button>
+            <Button onClick={() => void navigate("/billing")}>View Pro plan</Button>
           </Banner>
         ) : null}
         <Card>

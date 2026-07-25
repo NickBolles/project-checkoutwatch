@@ -1,5 +1,5 @@
 import { Badge, BlockStack, Card, DataTable, InlineStack, Page, Text } from "@shopify/polaris";
-import { useLoaderData } from "react-router";
+import { useLoaderData, useNavigate } from "react-router";
 import { requestContext } from "../services/request.server.js";
 
 export async function loader({ request, params }: { request: Request; params: { id?: string } }) {
@@ -11,6 +11,7 @@ export async function loader({ request, params }: { request: Request; params: { 
 type IncidentData = Awaited<ReturnType<typeof loader>>;
 
 export function IncidentDetailPage({ data }: { data: IncidentData }) {
+  const navigate = useNavigate();
   const incident = data.incident;
   const diagnosis = asRecord(incident.diagnosis);
   const consoleEntries = Array.isArray(incident.openingRun.console)
@@ -22,7 +23,7 @@ export function IncidentDetailPage({ data }: { data: IncidentData }) {
   return (
     <Page
       title={`Incident: ${incident.monitor.name}`}
-      backAction={{ content: "Dashboard", url: "/" }}
+      backAction={{ content: "Dashboard", onAction: () => void navigate("/") }}
     >
       <BlockStack gap="400">
         <Card>

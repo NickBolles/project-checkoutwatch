@@ -31,5 +31,11 @@ Beta via the same r/shopify presence; content targeting "shopify checkout not wo
 ### Risks
 Shopify checkout DOM changes break tests (mitigate: assertion-level checks not pixel checks, canary suite on your own dev stores); bot-detection on checkouts (mitigate: respect robots, identify your agent, document allowlisting); niche is verified-small — treat $500–800/mo as success, not a stepping stone to $10k.
 
+### Brand and domain direction (2026-07-24)
+**Recommendation: rename before public launch to Checkout Harbor.** An existing WooCommerce "Checkout Watch" monitoring plugin makes CheckoutWatch a poor public-facing name despite the internal project name. `checkoutharbor.com` appeared unregistered in a live RDAP lookup on 2026-07-24; confirm availability at registrar checkout and complete trademark/legal clearance before purchase or launch. Backups: Cart Pulse HQ (`cartpulsehq.com`) and Checkout Lark (`checkoutlark.com`) appeared unregistered in the same lookup.
+
+### Hosted deployment progress (2026-07-24)
+The VPS release is live at immutable SHA `9f629f1a4d9cdb8a4832e5eb6f9b61d730f73ae4`. Postgres, Redis, web, and the Playwright worker are healthy; the migration completed successfully; Traefik and public HTTPS `/healthz` are verified. The next product gate is a real Shopify development-store integration: Partner app/OAuth, offline-token persistence, webhook verification, a checkout canary, and a controlled incident/alert drill. Do not collect production merchant credentials or enable real alert channels before that development-store gate passes.
+
 ---
 

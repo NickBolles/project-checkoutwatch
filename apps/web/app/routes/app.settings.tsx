@@ -9,7 +9,7 @@ import {
   Text,
   TextField,
 } from "@shopify/polaris";
-import { Form, useLoaderData } from "react-router";
+import { Form, useLoaderData, useNavigate } from "react-router";
 import { useState } from "react";
 import { requestContext } from "../services/request.server.js";
 import { formString } from "../services/form.server.js";
@@ -28,9 +28,10 @@ export async function action({ request }: { request: Request }) {
 
 export default function SettingsRoute() {
   const { shop } = useLoaderData<typeof loader>();
+  const navigate = useNavigate();
   const [storefrontUrl, setStorefrontUrl] = useState(shop.storefrontUrl);
   return (
-    <Page title="Settings" backAction={{ content: "Dashboard", url: "/" }}>
+    <Page title="Settings" backAction={{ content: "Dashboard", onAction: () => void navigate("/") }}>
       <BlockStack gap="400">
         <Card>
           <Text as="h2" variant="headingMd">
@@ -38,7 +39,7 @@ export default function SettingsRoute() {
           </Text>
           <InlineStack gap="300">
             <Badge>{shop.plan}</Badge>
-            <Button url="/billing">Manage billing</Button>
+            <Button onClick={() => void navigate("/billing")}>Manage billing</Button>
           </InlineStack>
         </Card>
         <Card>
@@ -46,7 +47,7 @@ export default function SettingsRoute() {
             Public status page
           </Text>
           <Text as="p">Publish sanitized checkout availability and incident history on Pro.</Text>
-          <Button url="/settings/status-page">Configure status page</Button>
+          <Button onClick={() => void navigate("/settings/status-page")}>Configure status page</Button>
         </Card>
         <Card>
           <Form method="post">

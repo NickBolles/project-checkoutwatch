@@ -9,7 +9,7 @@ import {
   Page,
   Text,
 } from "@shopify/polaris";
-import { Form, useLoaderData } from "react-router";
+import { Form, useLoaderData, useNavigate } from "react-router";
 import { useRevalidator } from "react-router";
 import { useEffect } from "react";
 import { Sparkline } from "../components/sparkline.js";
@@ -34,9 +34,10 @@ export async function action({ request, params }: { request: Request; params: { 
 }
 
 export function MonitorDetailPage({ data }: { data: Awaited<ReturnType<typeof loader>> }) {
+  const navigate = useNavigate();
   const monitor = data.monitor;
   return (
-    <Page title={monitor.name} backAction={{ content: "Dashboard", url: "/" }}>
+    <Page title={monitor.name} backAction={{ content: "Dashboard", onAction: () => void navigate("/") }}>
       <BlockStack gap="400">
         {data.created ? (
           <Banner tone="success" title="Monitor created">

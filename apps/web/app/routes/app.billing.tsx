@@ -1,5 +1,5 @@
 import { Badge, BlockStack, Button, Card, InlineStack, Page, Text } from "@shopify/polaris";
-import { Form, redirect, useLoaderData } from "react-router";
+import { Form, redirect, useLoaderData, useNavigate } from "react-router";
 import { PLANS, type PlanName } from "@checkoutwatch/core";
 import { formString } from "../services/form.server.js";
 import { requestContext } from "../services/request.server.js";
@@ -33,8 +33,9 @@ export async function action({ request }: { request: Request }) {
 }
 
 export function BillingPage({ data }: { data: Awaited<ReturnType<typeof loader>> }) {
+  const navigate = useNavigate();
   return (
-    <Page title="Plans and billing" backAction={{ content: "Dashboard", url: "/" }}>
+    <Page title="Plans and billing" backAction={{ content: "Dashboard", onAction: () => void navigate("/") }}>
       <BlockStack gap="400">
         {data.changed ? (
           <Card>

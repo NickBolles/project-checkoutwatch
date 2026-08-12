@@ -43,9 +43,24 @@ The good news is bigger than it looks: **the hard infrastructure is already done
 | **N2** | **Production env file has 15 duplicated keys, and 5 of them disagree** — `POSTGRES_PASSWORD`, `DATABASE_URL`, `INLINE_WORKER`, `CONTROL_PROBE_URL`, `ALERT_TRANSPORT`, `PUBLIC_HOST`, `TRAEFIK_CERTRESOLVER`. Docker Compose is last-wins so today's effective config is correct, but the file still literally contains the template placeholder `POSTGRES_PASSWORD=REPLACE_WITH_A_LONG_RANDOM_PASSWORD` above the real value. One reordering takes the database down. **`ENCRYPTION_KEY` was checked specifically and its two copies are identical** — that was the catastrophic case and it is safe. There is also a dead `TRAEFIK_CERT_RESOLVER` typo key that nothing reads. | **P1**                      |
 | **N3** | **Control-probe replacement verified.** From the worker's egress network: `https://www.google.com/generate_204` → 204 in 365ms, `https://cloudflare.com/cdn-cgi/trace` → 200 in 76ms. Either is a valid independent probe. Recommending `generate_204` — it is purpose-built for connectivity checking and returns an empty body.                                                                                                                                                                                                                                                                                                                                                | resolves Blocker 3          |
 
+### Landed — second batch
+
+| Item                                      | Detail                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`/bot` page is live in code**           | The synthetic-traffic UA pointed at `https://checkoutwatch.app/bot`, a domain that does not resolve. A dead link there is worse than none — merchants and WAF vendors use it to judge whether the traffic is legitimate. [`bot.tsx`](apps/web/app/routes/bot.tsx) now serves identification, egress addresses, allowlisting, analytics exclusion, and how to stop the traffic. Served by the app, so no domain purchase is needed. |
+| **`/legal/privacy` page is live in code** | [`legal.privacy.tsx`](apps/web/app/routes/legal.privacy.tsx). Written from the Prisma schema and COMPLIANCE.md rather than a template: the no-customer-PII position, the `read_products`/`read_themes` scope limit, all four sub-processors, retention, and the GDPR endpoints. **Draft — needs legal review before publishing.**                                                                                                  |
+| **Bot UA derives from the app URL**       | `checkoutWatchUserAgent(botInfoUrl)`, with both runtimes passing `${SHOPIFY_APP_URL}/bot`. The link now follows the deployment instead of rotting in a constant, which also survives the pending rebrand.                                                                                                                                                                                                                          |
+| **App Store listing copy drafted**        | [`docs/APP_STORE_LISTING.md`](APP_STORE_LISTING.md) — name, subtitle, introduction, and details all written to Shopify's character limits, five features, a screenshot shot-list with captions, pricing mapped to `plans.ts`, reviewer instructions that pre-answer the automated-traffic question, and the rebrand find-and-replace list. This was the 4–6h item on the critical path.                                            |
+| **Tests**                                 | 4 more, pinning both pages and the UA regression. Suite now **128 passed, 7 skipped, 0 failed** (from 114 at audit time). Typecheck, lint, and build all clean.                                                                                                                                                                                                                                                                    |
+
+Commits: `eb98a43` (webhooks + hardening), `7272bce` (public pages), `a0792e1` (tests).
+
 ### Blocked, needs you
 
-- **Control probe + env cleanup could not be applied.** Every in-place edit to `/etc/vps-apps/checkoutwatch.env` was refused by the sandbox permission layer — a reasonable guard on a production secrets file, and not one to route around. A timestamped backup (`checkoutwatch.env.bak-20260812`) _was_ created successfully. The exact one-liner is in §8 below.
+Two categories of command were refused by the sandbox permission layer. Both guards are reasonable — a production secrets file and a production deployment — and neither is worth routing around.
+
+- **Env edits.** Every in-place edit to `/etc/vps-apps/checkoutwatch.env` was refused. A timestamped backup (`checkoutwatch.env.bak-20260812`) _was_ created successfully. Commands in §8a/§8b.
+- **Deploying to the VPS.** The running containers are still on `ca31316`, so `/bot`, `/legal/privacy`, and every fix above are committed and pushed but **not yet live**. Command in §8c.
 
 ---
 
@@ -347,12 +362,26 @@ ssh root@srv1073822.hstgr.cloud "awk -F= '/^[A-Z_]+=/{k=\$1; last[k]=NR} {line[N
 
 The final command prints nothing if the file is clean.
 
-### 8c. Apply the env changes
+### 8c. Deploy the new code and apply the env changes
 
-Compose reads `env_file` at container creation, so a restart is not enough — the containers must be recreated:
+The VPS is still running `ca31316`. This pulls the three new commits and rebuilds. Compose reads `env_file` at container creation, so the same command also picks up §8a/§8b — a plain restart would not.
 
 ```bash
-ssh root@srv1073822.hstgr.cloud "cd /opt/vps-apps/project-checkoutwatch && docker compose --env-file .env.production -f docker-compose.production.yml up -d"
+ssh root@srv1073822.hstgr.cloud "cd /opt/vps-apps/project-checkoutwatch && git fetch origin main && git checkout a0792e1 && docker compose --env-file .env.production -f docker-compose.production.yml up -d --build"
+```
+
+The worker image rebuild pulls the Playwright base, so allow several minutes. Then verify — both should return 200:
+
+```bash
+curl -sS -o /dev/null -w "bot: %{http_code}\n" https://checkoutwatch.srv1073822.hstgr.cloud/bot
+curl -sS -o /dev/null -w "privacy: %{http_code}\n" https://checkoutwatch.srv1073822.hstgr.cloud/legal/privacy
+```
+
+Optionally publish the egress addresses on `/bot` by adding these to the env file before deploying (the page degrades gracefully without them):
+
+```
+PUBLIC_EGRESS_IPV4=72.60.30.172
+PUBLIC_EGRESS_IPV6=2a02:4780:2d:f46b::1
 ```
 
 ### 8d. Once the Shopify client ID is confirmed

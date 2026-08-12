@@ -2,6 +2,10 @@ import { Queue, Worker, type ConnectionOptions } from "bullmq";
 import { DEFAULT_QUEUE_PREFIX } from "./constants.js";
 import type { EnqueueOpts, JobHandler, JobQueue, ProcessorHandle } from "./types.js";
 
+const COMPLETED_JOB_TTL_SECONDS = 24 * 60 * 60;
+const COMPLETED_JOB_CAP = 1_000;
+const FAILED_JOB_TTL_SECONDS = 14 * 24 * 60 * 60;
+
 export class BullMQDriver implements JobQueue {
   private readonly queues = new Map<string, Queue<unknown>>();
   private readonly workers = new Set<Worker>();
@@ -84,6 +88,14 @@ export class BullMQDriver implements JobQueue {
       queue = new Queue<unknown>(this.queueName(name), {
         connection: this.connection,
         prefix: this.prefix,
+        // Without these BullMQ retains every completed and failed job forever, so
+        // Redis grows without bound in production. Failed jobs are kept far longer
+        // than completed ones because they are the dead-letter record ARCHITECTURE.md
+        // relies on for post-incident debugging.
+        defaultJobOptions: {
+          removeOnComplete: { age: COMPLETED_JOB_TTL_SECONDS, count: COMPLETED_JOB_CAP },
+          removeOnFail: { age: FAILED_JOB_TTL_SECONDS },
+        },
       });
       this.queues.set(name, queue);
     }

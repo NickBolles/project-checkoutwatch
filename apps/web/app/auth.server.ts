@@ -39,15 +39,20 @@ export async function requireShop(request: Request): Promise<ShopContext> {
   }
 
   const authenticated = await getShopifyApp().authenticate.admin(request);
+  // Refresh the stored offline token on every authenticated request, not just on
+  // first install: Shopify issues a new token after a scope change or rotation,
+  // and the worker's Admin client decrypts this column to poll theme changes.
+  // Writing it only on create would leave the worker on a stale token forever.
+  const storedToken = authenticated.session.accessToken
+    ? { accessToken: encrypt(authenticated.session.accessToken, runtime.config.encryptionKey) }
+    : {};
   const stored = await runtime.client.shop.upsert({
     where: { shopDomain: authenticated.session.shop },
-    update: { uninstalledAt: null },
+    update: { uninstalledAt: null, ...storedToken },
     create: {
       shopDomain: authenticated.session.shop,
       storefrontUrl: `https://${authenticated.session.shop}`,
-      ...(authenticated.session.accessToken
-        ? { accessToken: encrypt(authenticated.session.accessToken, runtime.config.encryptionKey) }
-        : {}),
+      ...storedToken,
     },
   });
   const client = {

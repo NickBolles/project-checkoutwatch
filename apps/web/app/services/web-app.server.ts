@@ -7,9 +7,16 @@ import {
   type PlanName,
 } from "@checkoutwatch/core";
 import { PrismaDeliveryLogStore } from "@checkoutwatch/db";
+import { enforceFrequencyFloor } from "@checkoutwatch/engine";
 import type { PrismaClient } from "@prisma/client";
 import type { JobQueue } from "@checkoutwatch/queue";
 import type { AlertChannelAdapter } from "@checkoutwatch/alerts";
+
+// A manual run is a real Chromium checkout walk against the merchant's live
+// storefront. `runningAt` prevents overlap but not rate, so without this a stuck
+// client or an impatient click can hammer a real store. COMPLIANCE.md promises a
+// per-store frequency floor; this is where the manual path honours it.
+const MANUAL_RUN_FLOOR_MS = 60_000;
 
 export interface UptimeSummary {
   uptime: number | null;
@@ -61,7 +68,13 @@ export class WebAppService {
         uptime7: aggregateUptime(last7).uptime,
         uptime30: aggregateUptime(monitor.runs).uptime,
         responseTimes: monitor.runs
-          .filter((run) => run.durationMs !== null)
+          // Only real verdicts carry meaningful latency. `error` runs are our own
+          // failures (browser crash, watchdog kill) and must never dent a
+          // merchant's trend -- the status page already filters the same way.
+          .filter(
+            (run) =>
+              run.durationMs !== null && (run.status === "passed" || run.status === "failed"),
+          )
           .slice(-20)
           .map((run) => run.durationMs as number),
         openIncident: monitor.incidents.find((incident) => incident.status === "open") ?? null,
@@ -155,6 +168,11 @@ export class WebAppService {
       where: { id: monitorId, shopId, enabled: true },
     });
     if (!monitor) throw new Response("Enabled monitor not found", { status: 404 });
+    if (!enforceFrequencyFloor(monitor.lastRunAt ?? undefined, new Date(), MANUAL_RUN_FLOOR_MS))
+      throw new Response(
+        `This monitor ran less than ${MANUAL_RUN_FLOOR_MS / 1000} seconds ago. Wait a moment before running it again.`,
+        { status: 429 },
+      );
     await this.queue.add(
       "run-check",
       { monitorId, trigger: "manual" },

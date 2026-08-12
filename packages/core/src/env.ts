@@ -102,6 +102,17 @@ const rawEnvSchema = z
       });
     }
 
+    // The s3 adapter was planned but never built, and nothing reads
+    // config.artifactStore -- both runtimes hard-code LocalArtifactStore. Accepting
+    // "s3" would silently write to local disk, so fail closed at boot instead.
+    if (value.ARTIFACT_STORE === "s3") {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["ARTIFACT_STORE"],
+        message: "s3 is not implemented; use local with a persistent volume",
+      });
+    }
+
     if (value.NODE_ENV === "production") {
       if (!value.CONTROL_PROBE_URL) {
         context.addIssue({

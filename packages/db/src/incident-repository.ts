@@ -244,10 +244,17 @@ function countProductUnavailable(
   return count;
 }
 
-function countFailures(runs: Array<{ status: string }>): number {
+// Counts the consecutive *checkout* failure streak. `error` runs are ours, not the
+// merchant's, so they never break the streak; `PRODUCT_UNAVAILABLE` is a real
+// merchant-side condition but routes to its own attention counter and must not
+// contribute here. Counting it would let sold-out -> transient-5xx reach
+// consecutiveFails = 2 and open a paging incident off a single unconfirmed
+// checkout failure -- exactly the false page the recheck debounce exists to stop.
+function countFailures(runs: Array<{ status: string; failureCode: string | null }>): number {
   let count = 0;
   for (const run of runs) {
     if (run.status === "error") continue;
+    if (run.status === "failed" && run.failureCode === "PRODUCT_UNAVAILABLE") continue;
     if (run.status === "failed") {
       count += 1;
       continue;

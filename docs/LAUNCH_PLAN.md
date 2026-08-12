@@ -18,6 +18,37 @@ The good news is bigger than it looks: **the hard infrastructure is already done
 
 ---
 
+## 0.5 Progress log — 2026-08-12, build session
+
+### Landed
+
+| Item                                        | Detail                                                                                                                                                                                                                                                                                 |
+| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Shopify CLI installed**                   | `4.6.1`. Was missing entirely.                                                                                                                                                                                                                                                         |
+| **`shopify.app.toml` authored**             | Repo root. Declares app URL, redirect URLs, `read_products,read_themes`, API version `2026-07`, and all subscriptions: `app/uninstalled`, `app/scopes_update`, `app_subscriptions/update`, plus the three privacy-compliance URLs. **`client_id` is a placeholder pending Blocker 1.** |
+| **P1-1 · `app/scopes_update` handler**      | New route [`webhooks.app_scopes_update.ts`](apps/web/app/routes/webhooks.app_scopes_update.ts) + registration. Reconciles the stored session scope so scope changes don't push merchants into an authorization loop.                                                                   |
+| **P1-2 · Offline token refresh**            | [`auth.server.ts`](apps/web/app/auth.server.ts) now writes the encrypted token on the `update:` branch too, not just `create:`. Previously a rotated token left the worker's Admin client permanently stale.                                                                           |
+| **P2-1 · `ARTIFACT_STORE=s3` fails closed** | [`env.ts`](packages/core/src/env.ts) rejects it at boot instead of silently writing to local disk.                                                                                                                                                                                     |
+| **P2-2 · Manual-run frequency floor**       | `enforceFrequencyFloor` is wired into `runNow` with a 60s floor, returning 429. It was dead code with zero call sites; "Run now" was uncapped against a merchant's live store.                                                                                                         |
+| **P2-3 · False-page guard**                 | `countFailures` now excludes `PRODUCT_UNAVAILABLE`. Verified by the new tests: sold-out → transient-5xx used to reach `consecutiveFails: 2` and open a paging incident off a _single_ unconfirmed checkout failure; it now yields 0 and takes the recheck branch.                      |
+| **P2-4 · BullMQ retention**                 | `removeOnComplete` (24h / 1000) and `removeOnFail` (14d) defaults. Redis previously grew without bound.                                                                                                                                                                                |
+| **P2-5 · Sparkline hygiene**                | Dashboard latency trend now filters to `passed`/`failed`, matching the status page. Our own crashes no longer dent a merchant's numbers.                                                                                                                                               |
+| **Tests**                                   | 10 new tests across `apps/web` and `packages/db` pinning the floor, the scopes_update route, and the debounce. Suite: **124 passed, 7 skipped, 0 failed** (up from 114). Typecheck and lint clean.                                                                                     |
+
+### New findings
+
+| #      | Finding                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | Severity                    |
+| ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
+| **N1** | **The deployed `RESEND_API_KEY` is invalid.** Queried `GET https://api.resend.com/domains` from inside the web container: `400 — "API key is invalid"`. Alerts aren't merely mocked; the credential behind them is dead. Flipping `ALERT_TRANSPORT=real` today would make alert delivery _fail_ rather than send. **A fresh Resend key is now a hard launch dependency.**                                                                                                                                                                                                                                                                                                        | **P0** — upgrades Blocker 4 |
+| **N2** | **Production env file has 15 duplicated keys, and 5 of them disagree** — `POSTGRES_PASSWORD`, `DATABASE_URL`, `INLINE_WORKER`, `CONTROL_PROBE_URL`, `ALERT_TRANSPORT`, `PUBLIC_HOST`, `TRAEFIK_CERTRESOLVER`. Docker Compose is last-wins so today's effective config is correct, but the file still literally contains the template placeholder `POSTGRES_PASSWORD=REPLACE_WITH_A_LONG_RANDOM_PASSWORD` above the real value. One reordering takes the database down. **`ENCRYPTION_KEY` was checked specifically and its two copies are identical** — that was the catastrophic case and it is safe. There is also a dead `TRAEFIK_CERT_RESOLVER` typo key that nothing reads. | **P1**                      |
+| **N3** | **Control-probe replacement verified.** From the worker's egress network: `https://www.google.com/generate_204` → 204 in 365ms, `https://cloudflare.com/cdn-cgi/trace` → 200 in 76ms. Either is a valid independent probe. Recommending `generate_204` — it is purpose-built for connectivity checking and returns an empty body.                                                                                                                                                                                                                                                                                                                                                | resolves Blocker 3          |
+
+### Blocked, needs you
+
+- **Control probe + env cleanup could not be applied.** Every in-place edit to `/etc/vps-apps/checkoutwatch.env` was refused by the sandbox permission layer — a reasonable guard on a production secrets file, and not one to route around. A timestamped backup (`checkoutwatch.env.bak-20260812`) _was_ created successfully. The exact one-liner is in §8 below.
+
+---
+
 ## 1. Component status
 
 Legend: ✅ done · ⚠️ done but misconfigured/unverified · ❌ missing
@@ -291,6 +322,56 @@ Track 3 — CODE  (the critical path)
 | **Live Shopify/Redis shape mismatches**                                     | Medium          | 2–4h                      | Explicitly predicted by `GAP_REPORT.md`. D1 carries a 3h budget for exactly this.                                                                                                          |
 | **False-positive incident from the self-referential control probe**         | High if unfixed | Churn driver              | Blocker 3, fixed Day 1 morning.                                                                                                                                                            |
 | **Listing assets slip**                                                     | Medium          | Slips submission by a day | Start Day 1 morning on a parallel track.                                                                                                                                                   |
+
+---
+
+## 8. Handoff — commands that need your hands
+
+### 8a. Fix the control probe (blocked by the secrets-file guard)
+
+A backup already exists at `/etc/vps-apps/checkoutwatch.env.bak-20260812`. Run:
+
+```bash
+ssh root@srv1073822.hstgr.cloud "sed -i 's|^CONTROL_PROBE_URL=.*|CONTROL_PROBE_URL=https://www.google.com/generate_204|' /etc/vps-apps/checkoutwatch.env && grep '^CONTROL_PROBE_URL=' /etc/vps-apps/checkoutwatch.env"
+```
+
+That rewrites both duplicate occurrences to the same correct value, which incidentally removes the disagreement for this key.
+
+### 8b. Deduplicate the env file (N2)
+
+Keeps only the last occurrence of each key, which preserves today's exact effective config, and drops the dead typo key:
+
+```bash
+ssh root@srv1073822.hstgr.cloud "awk -F= '/^[A-Z_]+=/{k=\$1; last[k]=NR} {line[NR]=\$0} END{for(i=1;i<=NR;i++){if(line[i] ~ /^[A-Z_]+=/){split(line[i],p,\"=\"); if(last[p[1]]==i) print line[i]}}}' /etc/vps-apps/checkoutwatch.env > /tmp/env.new && sed -i '/^TRAEFIK_CERT_RESOLVER=/d' /tmp/env.new && install -m 600 /tmp/env.new /etc/vps-apps/checkoutwatch.env && rm /tmp/env.new && cut -d= -f1 /etc/vps-apps/checkoutwatch.env | sort | uniq -d"
+```
+
+The final command prints nothing if the file is clean.
+
+### 8c. Apply the env changes
+
+Compose reads `env_file` at container creation, so a restart is not enough — the containers must be recreated:
+
+```bash
+ssh root@srv1073822.hstgr.cloud "cd /opt/vps-apps/project-checkoutwatch && docker compose --env-file .env.production -f docker-compose.production.yml up -d"
+```
+
+### 8d. Once the Shopify client ID is confirmed
+
+```bash
+sed -i 's/REPLACE_WITH_CONFIRMED_CLIENT_ID/<the-real-client-id>/' shopify.app.toml
+shopify app deploy
+```
+
+Then re-probe every webhook path with an invalid HMAC and confirm 401 on each.
+
+### 8e. Credentials still needed
+
+| Credential                    | Why                                                                      | Status                                  |
+| ----------------------------- | ------------------------------------------------------------------------ | --------------------------------------- |
+| Shopify client ID + secret    | Resolves Blocker 1; unblocks `shopify app deploy`                        | **Waiting on you**                      |
+| **Fresh Resend API key**      | The deployed one is invalid (N1). Without it there are no alerts at all. | **Waiting on you**                      |
+| Resend webhook signing secret | Verifies `/webhooks/resend` delivery callbacks                           | Present, but re-issue alongside the key |
+| `ANTHROPIC_API_KEY`           | Turns on AI diagnosis, a paid-tier entitlement                           | Not set                                 |
 
 ---
 

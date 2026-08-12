@@ -1,0 +1,336 @@
+# CheckoutWatch — Launch Plan
+
+**Audit date:** 2026-08-12 · **Audited against:** `origin/main` @ `9945336` · **Live host:** https://checkoutwatch.srv1073822.hstgr.cloud
+
+---
+
+## 0. The honest headline
+
+**Shipping to the Shopify App Store in 1–2 days is not achievable — Shopify's app review is a queue measured in days-to-weeks, and it is not something we control.**
+
+What _is_ achievable in 1–2 days, and what this plan targets:
+
+> **Goal: a fully live, fully validated app on the `checkout-harbor-lab` dev store — real OAuth, real webhooks, real Chromium checkout runs against a real Shopify storefront, real alert emails, one deliberately-broken-checkout incident drill — and the App Store listing submitted for review.**
+
+Everything below is sequenced toward that.
+
+The good news is bigger than it looks: **the hard infrastructure is already done and already running.** The stack has been live on the VPS for 12 days, TLS is valid, the Playwright worker image launches Chromium and can reach the live dev store over HTTPS. What's missing is not engineering muscle — it's a handful of misconfigurations, one genuinely missing piece of code (webhook registration), and the fact that **nobody has ever actually run the product end-to-end against a real store.**
+
+---
+
+## 1. Component status
+
+Legend: ✅ done · ⚠️ done but misconfigured/unverified · ❌ missing
+
+| Component                                         | Status | Evidence / note                                                                                                                                                                                                         |
+| ------------------------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Feature completeness** (all 9 phases)           | ✅     | Zero `TODO`/`FIXME`/stub markers in `apps/`, `packages/`, `fixtures/`. Every phase in `IMPLEMENTATION_PLAN.md` implemented.                                                                                             |
+| **Test suite**                                    | ✅     | `pnpm test` → **114 passed, 7 skipped, 0 failed** (2026-08-12). The 7 skips are the BullMQ cross-instance contract tests, which auto-skip without `REDIS_URL` and run in CI's prod-parity lane.                         |
+| **Typecheck / lint / build**                      | ✅     | Wired into CI (`.github/workflows/ci.yml`) quality lane.                                                                                                                                                                |
+| **CI**                                            | ✅     | Two lanes: credential-free quality, plus prod-parity (Postgres schema flip, Redis BullMQ contract, compose validate, both images build).                                                                                |
+| **Dockerfiles**                                   | ✅     | `apps/web/Dockerfile` (node:20-bookworm-slim), `apps/worker/Dockerfile` (pinned `mcr.microsoft.com/playwright:v1.53.1-jammy`, matching `packages/engine`'s playwright dep).                                             |
+| **Compose (local prod-parity)**                   | ✅     | `docker-compose.yml` — Postgres + Redis + fixture/control-probe + migrate + web + worker.                                                                                                                               |
+| **Compose (production)**                          | ✅     | `docker-compose.production.yml` — no fixture, private `internal` network for Postgres/Redis, separate `egress` network for the worker, Traefik labels on web only. Well-designed.                                       |
+| **VPS deployment**                                | ✅     | All containers up 12 days: `checkoutwatch-{web,worker,postgres,redis}` all healthy. Deployed from `ca31316` (= current `main` code; `9945336` on top is docs-only).                                                     |
+| **Reverse proxy / TLS**                           | ✅     | Traefik (`root-traefik-1`), cert resolver `mytlschallenge`. Let's Encrypt cert for `checkoutwatch.srv1073822.hstgr.cloud`, valid **through 2026-10-19**. `GET /healthz` → `200 {"ok":true,"service":"web"}`.            |
+| **Playwright in production**                      | ✅     | **Verified live:** Chromium `138.0.7204.23` launches inside `checkoutwatch-worker-1` and successfully loaded `https://checkout-harbor-lab.myshopify.com` (HTTP 200). This was the single biggest unknown and it passes. |
+| **Webhook HMAC hardening**                        | ✅     | **Verified live:** `POST /webhooks/app/uninstalled` with a bogus HMAC → **401**. Missing-topic → 400. Fail-closed in production confirmed.                                                                              |
+| **Status page gating**                            | ✅     | **Verified live:** unknown slug → **404**.                                                                                                                                                                              |
+| **OAuth / install**                               | ⚠️     | `checkout-harbor-lab.myshopify.com` **is installed** (2026-07-25) with 1 session row — so OAuth worked once. But see Blocker #1: the deployed client ID doesn't match the one you gave me.                              |
+| **Shopify app config (`shopify.app.toml`)**       | ❌     | **Does not exist anywhere in the repo.**                                                                                                                                                                                |
+| **Webhook subscriptions registered with Shopify** | ❌     | **This is the big code gap.** See Blocker #2.                                                                                                                                                                           |
+| **Control probe**                                 | ⚠️     | Set to `http://web:3000/healthz` — points at CheckoutWatch's _own web container_. Passes the anti-loopback check on a technicality; defeats the purpose entirely. See Blocker #3.                                       |
+| **Alert delivery**                                | ⚠️     | `ALERT_TRANSPORT=mock` in production. `RESEND_API_KEY` and `RESEND_WEBHOOK_SECRET` **are** set — they're just not being used. One-line fix. See Blocker #4.                                                             |
+| **AI diagnosis**                                  | ⚠️     | `DIAGNOSIS_PROVIDER=heuristic`, no `ANTHROPIC_API_KEY`. The deterministic fallback works, but AI diagnosis is a headline feature and a pricing-tier entitlement — currently unshippable as advertised.                  |
+| **End-to-end product validation**                 | ❌     | **0 monitors, 0 check runs, 0 incidents in the production database.** The worker has ticked the scheduler every 30s for 12 days and found nothing to do. Nobody has ever created a monitor.                             |
+| **App Store listing assets**                      | ❌     | No icon, screenshots, listing copy, privacy policy URL, or support URL anywhere in the repo.                                                                                                                            |
+| **Branding decision**                             | ❌     | `docs/PROGRESS.md` recommends renaming to **"Checkout Harbor"** pre-launch. Undecided. Blocks listing copy, icon, domain, and the bot user-agent URL.                                                                   |
+| **Automated-traffic policy clearance**            | ❌     | `docs/COMPLIANCE.md` §1 explicitly requires a live Shopify policy review before public launch. Not done. See Blocker #7.                                                                                                |
+
+---
+
+## 2. Blockers
+
+### P0 — must resolve before the dev-store validation run
+
+#### Blocker 1 · Shopify client ID mismatch — **HUMAN**
+
+The deployed `SHOPIFY_API_KEY` on the VPS is **`b56a051cd4732ba1b85aebe674206560`**. The client ID you gave me is **`0c357b79f05ba08af84be6a72704df8a`**. These are different apps.
+
+The install on `checkout-harbor-lab` (2026-07-25) was performed with the `b56a051c…` app. Either you created a second app since, or one of the two is stale.
+
+**You must confirm which app is canonical before anything else** — every other step (webhook registration, App URL, listing) hangs off this. If `0c357b79…` is the right one, we swap `SHOPIFY_API_KEY`/`SHOPIFY_API_SECRET` in `/etc/vps-apps/checkoutwatch.env`, restart, and re-install on the dev store (the old session row will need purging).
+
+**Effort:** 5 min to confirm, 20 min to swap + re-install if it changed.
+
+---
+
+#### Blocker 2 · Shopify webhooks are never registered — **CODE**
+
+There is **no `shopify.app.toml`**, and `apps/web/app/shopify.server.ts` calls `shopifyApp({...})` with no `webhooks` config and no `afterAuth` hook — so no `registerWebhooks` ever runs either. Grepping `apps/web/app` and `packages/shopify/src` for `registerWebhooks|afterAuth|webhooks:|DeliveryMethod` returns nothing.
+
+Consequence: the routes exist and verify HMAC correctly ([`webhooks.server.ts:5`](apps/web/app/services/webhooks.server.ts:5)), but **Shopify has never been told to send anything to them.** That means:
+
+- `app/uninstalled` never fires → the COMPLIANCE.md "monitoring stops the moment consent is withdrawn" guarantee is currently **false in production**;
+- the three mandatory GDPR topics never fire → **hard blocker for App Store review**;
+- `app_subscriptions/update` never fires → plan changes never reconcile entitlements.
+
+**Fix:** create `shopify.app.toml` at the repo root declaring the app, scopes, application URL, redirect URLs, and all webhook subscriptions, then `shopify app deploy` to register them. Add `app/scopes_update` while you're there (see P1). The Shopify CLI is **not currently installed** locally (`shopify: command not found`).
+
+**Effort:** 1.5–2h including CLI install, browser auth, `config link`, and verifying subscriptions land.
+
+---
+
+#### Blocker 3 · Control probe points at ourselves — **OPS**
+
+`CONTROL_PROBE_URL=http://web:3000/healthz`. The engine uses the control probe to decide whether a connection failure means _"the merchant's store is down"_ (alertable `STORE_UNREACHABLE`) or _"our network is broken"_ (non-alertable `error`). Pointing it at our own web container means:
+
+- it will essentially always pass, so **any egress failure on our side becomes a false `STORE_UNREACHABLE` incident** → a 3am page for an outage that isn't the merchant's;
+- false positives are named in `PLAN.md` as the **#1 churn driver** for this product.
+
+It's also plain `http://`, and `.env.production.example` explicitly demands "a separately hosted known-good HTTPS endpoint. It must not resolve to this VPS."
+
+**Fix:** point it at a tiny always-up external HTTPS 200 endpoint not hosted on this box. Cheapest good options: a Cloudflare Worker returning 200, a static file on a CDN, or a well-known third-party health endpoint you control.
+
+**Effort:** 30 min (including standing up the endpoint).
+
+---
+
+#### Blocker 4 · Alerts are mocked in production — **OPS**
+
+`ALERT_TRANSPORT=mock`. Alert deliveries write to `var/outbox/` instead of sending. **No merchant would ever receive an alert** — which is the entire product.
+
+`RESEND_API_KEY` and `RESEND_WEBHOOK_SECRET` are already present in the env file. Flip `ALERT_TRANSPORT=real`, confirm the Resend sending domain is verified, and register the `/webhooks/resend` delivery callback in the Resend dashboard.
+
+**Effort:** 30 min, assuming the Resend domain is already verified. Add 1h if it isn't (DNS propagation).
+
+---
+
+#### Blocker 5 · The product has never run against a real store — **VALIDATION**
+
+Production DB: **0 monitors, 0 check runs, 0 incidents.** Every correctness guarantee in this repo is proven against the local fixture. `GAP_REPORT.md` opens by naming this exact risk, and `DEPLOYMENT_HANDOFF.md` §1 warns to _"budget time for shape mismatches on the first real-store install."_
+
+The unknowns that only a live run can answer:
+
+- Does Shopify's real checkout serve a bot challenge to `CheckoutWatchBot/1.0`? (`PLAN.md` §5 risk #1 — **existential**; if checkout hard-blocks automation the wedge collapses to cart-reachability.)
+- Do the payment-step selectors in [`assert-payment.ts`](packages/engine/src/steps/assert-payment.ts) match real Checkout-Extensibility markup?
+- Is `https://checkout.shopifycs.com` actually the payment iframe origin on this store? (`KNOWN_PAYMENT_ORIGINS` is config, updatable without a deploy — good.)
+- Does the stored offline token decrypt and authenticate against the Admin API from the worker?
+
+**This is the highest-information task in the whole plan. Do it as early as possible** — ideally immediately after Blockers 1–4, because a bot-challenge result changes everything downstream.
+
+**Effort:** 1h to run, unknown to fix whatever it surfaces. **Budget 3h.**
+
+---
+
+#### Blocker 6 · No App Store listing assets — **HUMAN + DESIGN**
+
+Nothing exists: app icon (1200×1200), 3–6 screenshots, listing description, feature bullets, pricing copy, **privacy policy URL**, **support email/URL**. Shopify will not accept a submission without these, and the privacy policy is non-negotiable given the app stores encrypted access tokens and runs synthetic traffic against merchant storefronts.
+
+**Effort:** 4–6h, and it's the single largest wall-clock item. **Start it in parallel on Day 1** — it does not depend on any code.
+
+---
+
+#### Blocker 7 · Automated-traffic policy clearance — **HUMAN / LEGAL**
+
+[`docs/COMPLIANCE.md:7`](docs/COMPLIANCE.md:7) states plainly:
+
+> "Before public launch, the operator must re-check the current Shopify Partner, storefront automated-traffic, and acceptable-use terms and obtain written clarification if necessary. If consented synthetic checkout traffic is prohibited, deployment must stop or pivot."
+
+This is the risk that can kill the product outright, and it is **the only blocker on this list that cannot be engineered around.** Read the current Partner Program Agreement + acceptable-use terms, and if there's any ambiguity, open a Partner support ticket _now_ — the response time is the constraint, not the reading.
+
+**Effort:** 1–2h to review; ticket turnaround is out of our hands. **Start Day 1 morning.**
+
+---
+
+### P1 — should fix before submitting for review
+
+| #    | Item                                                                                                                                                                                                                                                                                                                                                                                                               | Where                                      | Effort            |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------ | ----------------- |
+| P1-1 | **`app/scopes_update` webhook missing.** No route, no handler. Shopify expects apps to reconcile scope changes; reviewers check for it.                                                                                                                                                                                                                                                                            | new route + `routes.ts`                    | 45 min            |
+| P1-2 | **Offline token never refreshed on re-auth.** [`auth.server.ts:42`](apps/web/app/auth.server.ts:42) writes `accessToken` only in the `create:` branch of the upsert; the `update:` branch omits it. After a scope change or token rotation the worker keeps decrypting a stale token, and theme polling fails closed forever.                                                                                      | `auth.server.ts`                           | 30 min            |
+| P1-3 | **`appSubscriptionCreate` has no `test` flag.** [`billing-real.ts`](packages/shopify/src/billing-real.ts) omits `test:`. Shopify auto-marks dev-store charges as test, so this is _probably_ fine — but verify explicitly during the billing drill rather than assuming.                                                                                                                                           | verify, then patch if needed               | 30 min            |
+| P1-4 | **AI diagnosis is off in production.** `DIAGNOSIS_PROVIDER=heuristic`, no `ANTHROPIC_API_KEY`. AI diagnosis is a Growth/Pro entitlement in [`plans.ts:33`](packages/core/src/plans.ts:33) and a headline differentiator — you can't sell it while it's disabled. Also: `LLM_MODEL=claude-opus-4-8` is valid but a generation behind; **`claude-opus-5`** is the current recommended model.                         | env + `.env.example` + `DEFAULT_LLM_MODEL` | 30 min            |
+| P1-5 | **Bot UA points at a dead domain.** `CheckoutWatchBot/1.0 (+https://checkoutwatch.app/bot)` — that URL must resolve to a real page explaining the bot and listing egress IPs, both for merchant trust and because `COMPLIANCE.md` promises published egress IPs. Blocked on the branding decision.                                                                                                                 | `packages/engine` + a static page          | 1h                |
+| P1-6 | **Duplicate keys in the production env file.** `/etc/vps-apps/checkoutwatch.env` contains the full `.env.production.example` template _followed by_ an override block. Compose takes last-wins so the effective config is correct today, but this is a loaded footgun — the file still literally contains `CONTROL_PROBE_URL=https://REPLACE_WITH_INDEPENDENT_PROBE_HOST/health`. Clean it to one canonical block. | VPS                                        | 20 min            |
+| P1-7 | **Leftover `dev-shop.myshopify.com` seed row** in the production database from the mock-auth path. Harmless but untidy, and it will show up in any ops query.                                                                                                                                                                                                                                                      | VPS                                        | 10 min            |
+| P1-8 | **VPS needs a reboot** (`*** System restart required ***`, 11 pending updates including 1 that failed unattended install). Schedule it deliberately — after validation, not during.                                                                                                                                                                                                                                | VPS                                        | 15 min + downtime |
+
+### P2 — known-open gaps, fine to ship without
+
+These are the `GAP_REPORT.md` §B minors that were **not** closed by the gap-fix commit. I verified each is still open:
+
+| #    | Gap                                                                                                                                                                                                                                                                                                                                                                   | Impact                                                     | Effort    |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- | --------- |
+| P2-1 | `ARTIFACT_STORE=s3` is accepted and **silently writes to local disk** (`config.artifactStore` is never read; both runtimes hard-code `LocalArtifactStore`). Worst kind of config no-op. Minimum fix: throw at boot.                                                                                                                                                   | Low now (we're on `local`), lethal the day someone sets it | 30 min    |
+| P2-2 | `enforceFrequencyFloor` is dead code — zero non-test call sites. "Run now" is uncapped, so a merchant can hammer their own storefront with real Chromium checkout walks. Contradicts COMPLIANCE.md's frequency-floor claim.                                                                                                                                           | Medium — compliance-adjacent                               | 45 min    |
+| P2-3 | `countFailures` ([`incident-repository.ts:247`](packages/db/src/incident-repository.ts:247)) skips `error` runs but still counts `PRODUCT_UNAVAILABLE` toward the checkout-incident streak. A sold-out product followed by one transient 5xx can open a paging incident off a single unconfirmed failure — the exact false-page class the debounce exists to prevent. | Medium — narrow window, but it's the product's #1 promise  | 30 min    |
+| P2-4 | BullMQ driver sets no `removeOnComplete`/`removeOnFail`. Completed jobs accumulate in Redis **forever**.                                                                                                                                                                                                                                                              | Low now, unbounded growth later                            | 20 min    |
+| P2-5 | Dashboard sparkline ([`web-app.server.ts:64`](apps/web/app/services/web-app.server.ts:64)) filters only on `durationMs !== null`, so `error`-run durations pollute the merchant's latency trend. The status page gets this right; the dashboard doesn't.                                                                                                              | Low                                                        | 20 min    |
+| P2-6 | **S3 artifact store not built** — hard-caps the fleet at exactly one worker. Not a launch blocker; it's the scaling blocker.                                                                                                                                                                                                                                          | —                                                          | ~1 day    |
+| P2-7 | Agency multi-store support — named in `GAP_REPORT.md` as the biggest revenue lever.                                                                                                                                                                                                                                                                                   | —                                                          | multi-day |
+
+---
+
+## 3. Sequenced plan
+
+### Day 1
+
+**Morning — start the two long-lead human items first, because they block on other people, not on us.**
+
+| #   | Task                                                                                                                          | Owner        | Depends on | Est.                            |
+| --- | ----------------------------------------------------------------------------------------------------------------------------- | ------------ | ---------- | ------------------------------- |
+| A1  | Confirm canonical Shopify client ID (Blocker 1)                                                                               | Human        | —          | 5 min                           |
+| A2  | **Start** automated-traffic policy review; open a Partner ticket if ambiguous (Blocker 7)                                     | Human        | —          | 1–2h                            |
+| A3  | **Decide branding**: CheckoutWatch vs Checkout Harbor. Everything downstream (icon, copy, domain, bot UA) is blocked on this. | Human        | —          | 30 min                          |
+| A4  | **Start** listing assets: icon, screenshots, copy, privacy policy, support URL (Blocker 6)                                    | Human/design | A3         | 4–6h ⟶ runs all day in parallel |
+| A5  | Stand up external control-probe endpoint + repoint `CONTROL_PROBE_URL` (Blocker 3)                                            | Ops          | —          | 30 min                          |
+| A6  | Flip `ALERT_TRANSPORT=real`; verify Resend domain; register `/webhooks/resend` (Blocker 4)                                    | Ops          | —          | 30 min–1.5h                     |
+| A7  | Clean duplicate keys in `/etc/vps-apps/checkoutwatch.env`; drop `dev-shop` seed row (P1-6, P1-7)                              | Ops          | A5, A6     | 30 min                          |
+
+**Afternoon — the critical path.**
+
+| #   | Task                                                                                                                                                                                                                                                                                      | Owner    | Depends on | Est.   |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ---------- | ------ |
+| B1  | Install Shopify CLI; `shopify app config link` (browser auth — human)                                                                                                                                                                                                                     | Human    | A1         | 30 min |
+| B2  | **Author `shopify.app.toml`** — app name, client ID, `application_url`, redirect URLs, `read_products,read_themes`, and all 6 webhook subscriptions (`app/uninstalled`, `app/scopes_update`, `app_subscriptions/update`, GDPR trio) at the paths in [`routes.ts`](apps/web/app/routes.ts) | Code     | B1         | 1h     |
+| B3  | Add `app/scopes_update` route + handler (P1-1)                                                                                                                                                                                                                                            | Code     | —          | 45 min |
+| B4  | Fix offline-token refresh on re-auth (P1-2)                                                                                                                                                                                                                                               | Code     | —          | 30 min |
+| B5  | `shopify app deploy`; verify subscriptions registered; re-probe every webhook path with an invalid HMAC → expect 401                                                                                                                                                                      | Code+Ops | B2, B3     | 45 min |
+| B6  | Redeploy web+worker from `main`; restart with corrected env                                                                                                                                                                                                                               | Ops      | A7, B4     | 30 min |
+| B7  | **Re-install the app on `checkout-harbor-lab`**, confirm a fresh session + encrypted offline token lands                                                                                                                                                                                  | Human    | B5, B6     | 30 min |
+
+**End of Day 1 target:** correctly-configured app installed on the dev store with live webhook subscriptions and real alert transport.
+
+---
+
+### Day 2
+
+**Morning — the validation gauntlet. This is where the real risk lives.**
+
+| #   | Task                                                                                                                                                                                                                                                                    | Owner     | Depends on | Est.      |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- | ---------- | --------- |
+| C1  | **Create the first real monitor** via the wizard. Confirm `admin.listProducts` returns real products, the immediate first run enqueues, the worker picks it up (web→Redis→worker crossing), and a `CheckRun` row appears with 4 step timings.                           | Human+Ops | B7         | 1h        |
+| C2  | **The bot-challenge verdict.** Inspect the first run's failure code and captured artifacts. If `BOT_CHALLENGE` — **stop and escalate**; this is the pivot decision, not a bug to fix.                                                                                   | Human     | C1         | 30 min    |
+| C3  | Verify payment-step assertion against real checkout markup; update `KNOWN_PAYMENT_ORIGINS` if the iframe origin differs                                                                                                                                                 | Code      | C2         | 30 min–2h |
+| C4  | Confirm the worker's offline-token Admin client authenticates and `theme_updated` change events fire                                                                                                                                                                    | Ops       | C1         | 30 min    |
+| C5  | **Store-down drill.** Break the store origin while the (now genuinely independent) control probe stays healthy. Confirm: two `STORE_UNREACHABLE` runs → recheck → incident opens → alert enqueued → **real email arrives** → diagnosis renders → resolution on restore. | Human+Ops | C1, A5, A6 | 1.5h      |
+| C6  | **Uninstall/reinstall drill.** Uninstall from the dev store; confirm `app/uninstalled` fires, monitors disable, queued jobs cancel, token purges. This is now testable for the first time.                                                                              | Human     | B5         | 30 min    |
+| C7  | **Billing drill.** Upgrade to Growth in test mode; confirm `app_subscriptions/update` flips entitlements; downgrade and confirm `reconcile-plan` disables over-quota monitors. Verify the charge is marked test (P1-3).                                                 | Human     | B5, C6     | 1h        |
+| C8  | **Status page check.** Enable on a Pro shop, confirm it renders publicly, sanitizes diagnosis internals, and 404s for a free shop.                                                                                                                                      | Human     | C7         | 30 min    |
+
+**Afternoon — close out and submit.**
+
+| #   | Task                                                                                                                                  | Owner      | Depends on | Est.          |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------- | ---------- | ---------- | ------------- |
+| D1  | Fix whatever C1–C8 surfaced                                                                                                           | Code       | C-block    | **budget 3h** |
+| D2  | Enable AI diagnosis: set `ANTHROPIC_API_KEY`, `DIAGNOSIS_PROVIDER=anthropic`, `LLM_MODEL=claude-opus-5` (P1-4)                        | Ops        | —          | 30 min        |
+| D3  | Publish the bot-info page + egress IPs; update the UA URL (P1-5)                                                                      | Code+Human | A3         | 1h            |
+| D4  | Finalize listing assets; configure Shopify-managed pricing (Free / $19 Growth / $49 Pro per [`plans.ts`](packages/core/src/plans.ts)) | Human      | A4         | 1h            |
+| D5  | Land the P2 quick wins if time allows: P2-1, P2-3, P2-4, P2-5 (~1.5h total, all small and all in areas the drills just exercised)     | Code       | D1         | 1.5h          |
+| D6  | Reboot the VPS; confirm everything comes back healthy (P1-8)                                                                          | Ops        | D1         | 30 min        |
+| D7  | **Submit for App Store review**                                                                                                       | Human      | A2, D4, D6 | 1h            |
+
+---
+
+## 4. What can run in parallel
+
+Three independent tracks. Run them concurrently — the critical path is only as long as the longest one.
+
+```
+Track 1 — HUMAN / NON-TECHNICAL  (starts immediately, gates submission)
+  A2 policy review ──────────────────────────────────► (external turnaround)
+  A3 branding ──► A4 listing assets ─────────────────► D4 ──► D7 submit
+
+Track 2 — OPS / CONFIG  (no code dependency)
+  A5 control probe ──┐
+  A6 alerts real ────┼──► A7 env cleanup ──► B6 redeploy ──► D2 ──► D6 reboot
+                     │
+Track 3 — CODE  (the critical path)
+  B1 CLI ──► B2 toml ──┐
+  B3 scopes_update ────┼──► B5 deploy webhooks ──► B7 install
+  B4 token refresh ────┘                              │
+                                                      ▼
+                                   C1–C8 validation ──► D1 fixes ──► D5 polish
+```
+
+**Hard serialization points — these cannot be parallelized away:**
+
+- **A1 (client ID) gates everything.** Resolve it first thing.
+- **B5 (webhook registration) gates C6/C7.** No registration, no uninstall or billing drill.
+- **C1 gates C2–C5.** No monitor, no runs, no incident.
+- **A2 (policy) gates D7 only** — it doesn't block engineering, so don't let it stall the build.
+
+**Best use of a second pair of hands:** put one person entirely on Track 1 (branding → assets → policy) starting Day 1 morning. That track is 6–9h of wall clock with zero code dependencies, and it is the most likely thing to slip the submission.
+
+---
+
+## 5. Needs a human — cannot be scripted
+
+1. **Confirm the canonical Shopify client ID** (Blocker 1). Genuinely ambiguous; I can't resolve it from here.
+2. **Shopify Partner browser auth** for `shopify app config link` / `app deploy`. Interactive OAuth, no headless path.
+3. **Approve the OAuth install** on the dev store.
+4. **Branding decision** — CheckoutWatch or Checkout Harbor. Blocks icon, copy, domain, bot UA.
+5. **Automated-traffic policy review** and, if needed, a Partner support ticket. The one item that could stop the product.
+6. **Privacy policy + support URL** — legal content, must be real and hosted.
+7. **Listing assets** — icon and screenshots require design judgment.
+8. **Resend sending-domain verification** (DNS records) if not already done.
+9. **Provisioning `ANTHROPIC_API_KEY`** for AI diagnosis.
+10. **Approving the VPS reboot window.**
+
+---
+
+## 6. Risk register
+
+| Risk                                                                        | Likelihood      | Impact                    | Mitigation                                                                                                                                                                                 |
+| --------------------------------------------------------------------------- | --------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Shopify checkout serves a bot challenge**                                 | Medium          | **Fatal to the wedge**    | Test on Day 2 morning (C2) — earliest possible signal. Documented fallback: pivot to cart+checkout-reachability assertions, weaker but still ahead of status-only competitors.             |
+| **Automated-traffic policy prohibits consented synthetic checkout traffic** | Low–Medium      | **Fatal**                 | A2 on Day 1 morning. Fallback: merchant opt-in via theme snippet / allowlist token.                                                                                                        |
+| **App review rejection**                                                    | Medium          | 3–10 day delay            | Get the GDPR webhooks _actually registered_ (B5), privacy policy live, and `app/scopes_update` handled. These are the three most common rejection causes and all three are currently open. |
+| **Real checkout markup breaks the payment assertion**                       | Medium          | 2–4h                      | `KNOWN_PAYMENT_ORIGINS` is config, not code — updatable without a deploy. Assertions are already presence-based, not pixel-based.                                                          |
+| **Live Shopify/Redis shape mismatches**                                     | Medium          | 2–4h                      | Explicitly predicted by `GAP_REPORT.md`. D1 carries a 3h budget for exactly this.                                                                                                          |
+| **False-positive incident from the self-referential control probe**         | High if unfixed | Churn driver              | Blocker 3, fixed Day 1 morning.                                                                                                                                                            |
+| **Listing assets slip**                                                     | Medium          | Slips submission by a day | Start Day 1 morning on a parallel track.                                                                                                                                                   |
+
+---
+
+## 7. After submission
+
+Ordered by value, from `GAP_REPORT.md` §B and `PLAN.md`:
+
+1. **S3 artifact store** (P2-6) — hard-caps the fleet at one worker until it exists. First real scaling constraint.
+2. **Agency multi-store** — named as the biggest revenue lever.
+3. **Remaining P2 items** if not landed in D5.
+4. **Public "Shopify status — actually tested" marketing page** — the distribution asset `PLAN.md` argues is part of the product, not an afterthought. `README.md` is explicit that a listing alone does not convert here (a competing app had zero reviews 17 months post-launch).
+5. **Re-verify the competitor pricing wedge** (Uptime $29/$99/$299) — `README.md` asks for this to be re-checked at build time, and it hasn't been since July.
+6. **Shared edge rate limiter** for the status page — the 60s cache and limiter are per-process, so they only hold with one web replica.
+
+---
+
+## Appendix — verification log (2026-08-12)
+
+Everything asserted above was checked directly, not inferred:
+
+```
+pnpm test                          → 114 passed | 7 skipped | 0 failed (32 files)
+git rev-list HEAD...origin/main    → local was 8 behind; fast-forwarded to 9945336
+docker ps                          → cw-{web,worker,postgres,redis} all Up 12 days (healthy)
+GET  /healthz                      → 200 {"ok":true,"service":"web"}
+GET  /status/does-not-exist        → 404
+POST /webhooks/app/uninstalled     → 401 (bogus HMAC) · 400 (missing topic)
+openssl s_client                   → CN=checkoutwatch.srv1073822.hstgr.cloud
+                                     Let's Encrypt, notAfter 2026-10-19
+psql "Shop"                        → dev-shop.myshopify.com (2026-07-21, seed)
+                                     checkout-harbor-lab.myshopify.com (2026-07-25)
+psql counts                        → Monitor 0 · CheckRun 0 · Incident 0 · Session 1
+worker chromium.launch()           → chromium 138.0.7204.23
+  → goto checkout-harbor-lab       → HTTP 200
+docker exec web printenv           → SHOPIFY_AUTH=real · ALERT_TRANSPORT=mock
+                                     CONTROL_PROBE_URL=http://web:3000/healthz
+                                     DIAGNOSIS_PROVIDER=heuristic · QUEUE_PREFIX=checkoutwatch
+                                     SHOPIFY_API_KEY=b56a051c… (≠ stated 0c357b79…)
+worker logs                        → "scheduler tick completed" runs:0, every 30s, for 12 days
+grep TODO|FIXME|stub               → 0 hits across apps/ packages/ fixtures/
+grep registerWebhooks|afterAuth    → 0 hits
+find -name "*.toml"                → only prisma migration_lock.toml
+```

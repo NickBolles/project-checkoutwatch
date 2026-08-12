@@ -6,6 +6,7 @@
 > (stable shared queue prefix, prod control-probe, fail-closed webhook HMAC, real worker Shopify admin, CI + Dockerfiles).
 >
 > **Next steps:**
+> - **→ [`docs/LAUNCH_PLAN.md`](./docs/LAUNCH_PLAN.md) is now the authoritative next-actions document** (audited 2026-08-12 against the live VPS deployment). The stack is already deployed and healthy at `checkoutwatch.srv1073822.hstgr.cloud`; the remaining blockers are Shopify webhook registration (no `shopify.app.toml` exists), a self-referential control probe, mocked alert transport, and the fact that the product has never been run against a real store (0 monitors / 0 runs in production).
 > - **Deploy & live-test** → [`DEPLOYMENT_HANDOFF.md`](./DEPLOYMENT_HANDOFF.md) — VPS + Traefik + Shopify dev-store runbook. Note the load-bearing prod settings (stable `QUEUE_PREFIX`, non-loopback `CONTROL_PROBE_URL`).
 > - **Remaining backlog** → [`GAP_REPORT.md`](./GAP_REPORT.md) §B: compliance/UX seams; **S3 artifact store** (unblocks multi-worker scale — single worker only until then); agency multi-store (biggest revenue lever); public "Shopify status — actually tested" marketing page.
 > - **Standing risk:** correctness is proven against mocks; expect small live Shopify/Redis shape mismatches on first real deploy.

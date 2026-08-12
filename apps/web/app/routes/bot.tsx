@@ -32,8 +32,19 @@ export function loader() {
   };
 }
 
-export default function BotInfoPage() {
-  const { userAgent, egressIpv4, egressIpv6, appUrl } = useLoaderData<typeof loader>();
+export interface BotInfoData {
+  userAgent: string;
+  egressIpv4: string | null;
+  egressIpv6: string | null;
+  appUrl: string;
+}
+
+export default function BotInfoRoute() {
+  return <BotInfoPage data={useLoaderData<typeof loader>()} />;
+}
+
+export function BotInfoPage({ data }: { data: BotInfoData }) {
+  const { userAgent, egressIpv4, egressIpv6, appUrl } = data;
   return (
     <main className="cw-public">
       <style>{publicPageStyles}</style>

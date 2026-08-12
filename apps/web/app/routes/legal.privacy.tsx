@@ -18,8 +18,12 @@ export function loader() {
   return { appUrl: getConfig().shopifyAppUrl };
 }
 
-export default function PrivacyPolicyPage() {
-  const { appUrl } = useLoaderData<typeof loader>();
+export default function PrivacyPolicyRoute() {
+  return <PrivacyPolicyPage data={useLoaderData<typeof loader>()} />;
+}
+
+export function PrivacyPolicyPage({ data }: { data: { appUrl: string } }) {
+  const { appUrl } = data;
   return (
     <main className="cw-public">
       <style>{publicPageStyles}</style>

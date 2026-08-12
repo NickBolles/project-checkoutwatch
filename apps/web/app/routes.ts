@@ -13,6 +13,11 @@ export default [
   ]),
   route("artifacts/:runId/:file", "routes/artifacts.$runId.$file.ts"),
   route("status/:slug", "routes/status.$slug.tsx"),
+  // Public, unauthenticated. /bot is the destination of the synthetic-traffic user
+  // agent and must always resolve; /legal/privacy is the privacy policy URL the
+  // App Store listing points at.
+  route("bot", "routes/bot.tsx"),
+  route("legal/privacy", "routes/legal.privacy.tsx"),
   route("healthz", "routes/healthz.ts"),
   route("auth/*", "routes/auth.$.ts"),
   route("webhooks/app/uninstalled", "routes/webhooks.app_uninstalled.ts"),

@@ -46,6 +46,7 @@ async function createRuntime(): Promise<WebRuntime> {
       artifactStore: new LocalArtifactStore(config.artifactDir),
       controlProbeUrl: config.controlProbeUrl,
       knownPaymentOrigins: config.knownPaymentOrigins,
+      botInfoUrl: new URL("/bot", config.shopifyAppUrl).toString(),
     });
     const handles = await registerJobs(queue, repository, runner, config.engineConcurrency, {
       client,

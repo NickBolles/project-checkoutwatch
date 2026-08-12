@@ -28,6 +28,7 @@ export async function startWorker() {
     artifactStore: new LocalArtifactStore(config.artifactDir),
     controlProbeUrl: config.controlProbeUrl,
     knownPaymentOrigins: config.knownPaymentOrigins,
+    botInfoUrl: new URL("/bot", config.shopifyAppUrl).toString(),
   });
   const processors = await registerJobs(queue, repository, runner, config.engineConcurrency, {
     client,

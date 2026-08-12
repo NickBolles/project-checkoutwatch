@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { chromium, errors, type Browser, type BrowserContext, type Page } from "playwright";
 import { LocalArtifactStore, type ArtifactStore } from "./artifact-store.js";
 import { attachCapture, type CaptureBuffer } from "./capture.js";
-import { CHECKOUTWATCH_USER_AGENT, controlProbe, fetchRobotsTxt } from "./compliance.js";
+import { checkoutWatchUserAgent, controlProbe, fetchRobotsTxt } from "./compliance.js";
 import type {
   CheckRunResult,
   CheckoutTestDefinition,
@@ -23,6 +23,8 @@ export interface CheckoutRunnerOptions {
   knownPaymentOrigins?: readonly string[];
   fetchImpl?: typeof fetch;
   hardTimeoutMs?: number;
+  /** Absolute URL of this deployment's bot-information page, embedded in the UA. */
+  botInfoUrl?: string;
 }
 
 export class CheckoutRunner {
@@ -56,7 +58,7 @@ export class CheckoutRunner {
         ownsBrowser = true;
       }
       context = await browser.newContext({
-        userAgent: CHECKOUTWATCH_USER_AGENT,
+        userAgent: checkoutWatchUserAgent(this.options.botInfoUrl),
         extraHTTPHeaders: { "Accept-Language": "en-US,en;q=0.9" },
       });
       capture = attachCapture(context, new URL(definition.storeUrl).origin);

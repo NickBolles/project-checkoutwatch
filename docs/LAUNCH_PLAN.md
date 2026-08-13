@@ -64,6 +64,41 @@ Two categories of command were refused by the sandbox permission layer. Both gua
 
 ---
 
+## 0.6 Progress log — 2026-08-13, launch-prep session
+
+### Landed
+
+| Item                                       | Detail                                                                                                                                                                                                                                                                                                                     |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Blocker 1 resolved — client ID**         | The deployed `SHOPIFY_API_KEY` is `b56a051cd4732ba1b85aebe674206560`, and that is the ID you confirmed. `shopify.app.toml` now carries it in place of the placeholder. The `0c357b79…` app in §2 Blocker 1 is stale — disregard it.                                                                                       |
+| **Blocker 3 resolved — control probe**     | `CONTROL_PROBE_URL` rewritten on the VPS (both duplicate occurrences) from `http://web:3000/healthz` to `https://www.google.com/generate_204`. Backup at `/etc/vps-apps/checkoutwatch.env.bak-20260813`. **Not yet in effect** — Compose reads `env_file` at container creation, so it applies on the next `up -d` (§8c). |
+| **Encrypted nightly backups**              | `/usr/local/bin/checkoutwatch-backup.sh` + `/etc/cron.d/checkoutwatch-backup`, modelled on the SKUForge and AlertProof scripts. AES-256-CBC, PBKDF2 200k, key at `/etc/vps-apps/checkoutwatch-backup.key`, 14-day retention, 03:57 UTC (20 min after SKUForge, 40 after AlertProof, so the three dumps never overlap).     |
+| **Backup verified end-to-end**             | Not just "the script ran". First backup written (3,472 bytes); decrypt+gunzip yields valid SQL; a deliberately wrong key is rejected; a full restore into a scratch database matched production row-for-row on `Shop`, `Monitor`, `CheckRun`, `Incident`, and `Session`; scratch database dropped.                        |
+| **Public pages — landing, support, terms** | [`home.tsx`](../apps/web/app/routes/home.tsx), [`support.tsx`](../apps/web/app/routes/support.tsx), [`legal.terms.tsx`](../apps/web/app/routes/legal.terms.tsx), in the same self-contained `cw-public` style as `/bot` and `/legal/privacy`. Closes the listing's app-website and support-URL requirements (Blocker 6).  |
+| **Pricing cannot drift**                   | The landing page and terms derive plan rows and trial length from `PLANS` rather than restating them, and a test asserts the rendered labels match `PLANS` exactly.                                                                                                                                                        |
+| **Contact addresses centralized**          | [`public-contact.ts`](../apps/web/app/routes/public-contact.ts) — one place to change when the rebrand or the domain move lands.                                                                                                                                                                                          |
+| **Typegen actually typechecks now**        | `apps/web/tsconfig.json` included `.react-router/types/**/*` but never had the `rootDirs` overlay React Router's typegen needs, so every generated route import failed to resolve. Latent until someone ran `pnpm build` in their tree; now fixed, plus `.react-router/` and `apps/*/var/` gitignored and eslint-ignored.  |
+| **Tests**                                  | 6 more, including a route-registration guard that pins each public path to its module and asserts it sits outside the authenticated layout — rendering a component proves nothing if the route is not wired. Suite: **134 passed, 7 skipped, 0 failed** (from 128). Typecheck, lint, and build clean in CI order.         |
+
+### New findings
+
+| #      | Finding                                                                                                                                                                                                                                                                                                                                                                                                                       | Severity |
+| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| **N4** | **`checkoutwatch.nickbolles.com` does not point at the VPS.** There is no A record for it. It is caught by the `*.nickbolles.com` wildcard CNAME → `home.nickbolles.com` → `134.215.117.4`, a residential TDS broadband address, and answers **404**. `alertproof.nickbolles.com` has an explicit A record at `72.60.30.172` and works; `skuforge.nickbolles.com` has the same 404 problem. **Needs one DNS record.**         | **P0**   |
+| **N5** | **`RESEND_API_KEY` is not merely invalid — it is the literal template placeholder.** 27 characters, begins `REP`. `RESEND_WEBHOOK_SECRET` is a placeholder too. This confirms and sharpens N1: there is no Resend credential on this host at all, so `ALERT_TRANSPORT` was **left at `mock`**. Flipping it would break alerting rather than enable it.                                                                        | **P0**   |
+| **N6** | The env file still holds `POSTGRES_PASSWORD` and `DATABASE_URL` as placeholders in their first copy, with the real values in the second. Last-wins keeps this working. The dedupe in §8b was refused by the sandbox again, so **the reordering footgun in N2 is still live.**                                                                                                                                                | **P1**   |
+
+### Blocked, needs you
+
+Same two sandbox guards as the previous session, plus DNS.
+
+- **DNS record for `checkoutwatch.nickbolles.com`** (N4). Command in §8f. Nothing about the hostname move can proceed without it, including `shopify app deploy`.
+- **A real Resend API key** (N5). Until then there is no alert delivery on any transport.
+- **Env dedupe** (§8b) — refused again. The targeted `CONTROL_PROBE_URL` rewrite *was* allowed and is applied.
+- **`docker compose up -d`** (§8c) — refused again. The VPS still runs `ca31316`, so `/bot`, `/legal/privacy`, the three new pages, and the control-probe fix are all committed but **not live**.
+
+---
+
 ## 1. Component status
 
 Legend: ✅ done · ⚠️ done but misconfigured/unverified · ❌ missing
@@ -384,14 +419,51 @@ PUBLIC_EGRESS_IPV4=72.60.30.172
 PUBLIC_EGRESS_IPV6=2a02:4780:2d:f46b::1
 ```
 
-### 8d. Once the Shopify client ID is confirmed
+### 8d. Register the webhooks
+
+`client_id` is already filled in and confirmed, so this is just:
 
 ```bash
-sed -i 's/REPLACE_WITH_CONFIRMED_CLIENT_ID/<the-real-client-id>/' shopify.app.toml
 shopify app deploy
 ```
 
+**But not before §8f.** `application_url` is `https://checkoutwatch.nickbolles.com`, and deploying while that host 404s points OAuth at somewhere that cannot serve it, breaking the existing `checkout-harbor-lab` install.
+
 Then re-probe every webhook path with an invalid HMAC and confirm 401 on each.
+
+### 8f. Point `checkoutwatch.nickbolles.com` at the VPS (N4)
+
+`*.nickbolles.com` is a wildcard CNAME to `home.nickbolles.com` (`134.215.117.4`, a residential connection), so the subdomain currently answers 404. AlertProof works because it has an explicit A record that overrides the wildcard. CheckoutWatch needs the same one, in whatever DNS provider hosts `nickbolles.com`:
+
+```
+checkoutwatch.nickbolles.com.  A  72.60.30.172
+```
+
+Verify from anywhere:
+
+```bash
+dig +short checkoutwatch.nickbolles.com A
+```
+
+It must return `72.60.30.172` and nothing else. Then cut the deployment over — Traefik requests the Let's Encrypt certificate automatically on first request for the new host:
+
+```bash
+ssh root@srv1073822.hstgr.cloud "sed -i 's|^PUBLIC_HOST=.*|PUBLIC_HOST=checkoutwatch.nickbolles.com|; s|^SHOPIFY_APP_URL=.*|SHOPIFY_APP_URL=https://checkoutwatch.nickbolles.com|' /etc/vps-apps/checkoutwatch.env && cd /opt/vps-apps/project-checkoutwatch && docker compose --env-file .env.production -f docker-compose.production.yml up -d"
+```
+
+`shopify.app.toml` already lists callback URLs for **both** hosts, so OAuth keeps working across the cutover. Drop the `srv1073822` entries once the move is verified.
+
+Note that `skuforge.nickbolles.com` has the identical problem and is presumably also meant to have a record.
+
+### 8g. Restore from a backup
+
+Backups land in `/var/backups/checkoutwatch/`, encrypted with `/etc/vps-apps/checkoutwatch-backup.key`. **Keep a copy of that key off this host** — a backup encrypted with a key that only lives on the machine being backed up protects against nothing. The same applies to `ENCRYPTION_KEY` in the env file: without it the `Shop.accessToken` column in any restored dump is unreadable.
+
+Restore into a scratch database and diff before pointing the app at it — the dump carries `--clean --if-exists`, so restoring straight over a live database destroys it if the dump is bad:
+
+```bash
+ssh root@srv1073822.hstgr.cloud "docker exec checkoutwatch-postgres-1 psql -U checkoutwatch -d postgres -c 'CREATE DATABASE cw_restore_test;' && openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -salt -pass file:/etc/vps-apps/checkoutwatch-backup.key -in \$(ls -t /var/backups/checkoutwatch/*.enc | head -1) | gunzip | docker exec -i checkoutwatch-postgres-1 psql -U checkoutwatch -d cw_restore_test"
+```
 
 ### 8e. Credentials still needed
 

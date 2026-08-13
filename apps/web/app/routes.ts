@@ -15,9 +15,14 @@ export default [
   route("status/:slug", "routes/status.$slug.tsx"),
   // Public, unauthenticated. /bot is the destination of the synthetic-traffic user
   // agent and must always resolve; /legal/privacy is the privacy policy URL the
-  // App Store listing points at.
+  // App Store listing points at, /support its support URL, and /home its app
+  // website. The marketing page cannot be the index route -- "/" is the embedded
+  // admin app above, and that route authenticates against Shopify.
+  route("home", "routes/home.tsx"),
+  route("support", "routes/support.tsx"),
   route("bot", "routes/bot.tsx"),
   route("legal/privacy", "routes/legal.privacy.tsx"),
+  route("legal/terms", "routes/legal.terms.tsx"),
   route("healthz", "routes/healthz.ts"),
   route("auth/*", "routes/auth.$.ts"),
   route("webhooks/app/uninstalled", "routes/webhooks.app_uninstalled.ts"),

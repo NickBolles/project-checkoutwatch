@@ -2,6 +2,12 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "rootDir": ".",
+    // React Router's typegen emits .react-router/types/+routes.ts with imports
+    // written relative to the app root ("./app/root.tsx"), not to its own
+    // directory. rootDirs overlays the two so those resolve. Without it the
+    // generated file -- which "include" below pulls in -- fails to typecheck the
+    // moment `react-router build`/`typegen` has produced it.
+    "rootDirs": [".", "./.react-router/types"],
     "types": ["node", "vite/client", "vitest/globals"],
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx",
